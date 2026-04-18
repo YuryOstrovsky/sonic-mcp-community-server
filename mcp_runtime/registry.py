@@ -1,45 +1,70 @@
 """Tool registry for the SONiC MCP server.
 
-Every tool is a Python handler. Catalog metadata lives in
-generated/mcp_tools.json so clients can discover inputs/policy/tags.
+Tools live under sonic/tools/<category>/<tool_name>.py. Each file must
+define a function whose name matches the file's stem (e.g. get_interfaces
+lives in get_interfaces.py and exports def get_interfaces(...)).
+
+Discovery is automatic — dropping a new .py file into any sonic/tools/
+subdirectory is enough to register a tool. Files whose basename starts
+with '_' (_common.py, _fanout.py, …) are treated as private helpers and
+skipped. Tools whose name isn't also listed in generated/mcp_tools.json
+are skipped with a warning (missing catalog entry).
+
+Catalog metadata lives in generated/mcp_tools.json — input schema, risk,
+transport tags, etc. Keep that file in sync when adding a tool.
 """
 
 from __future__ import annotations
 
+import importlib
 import json
+import pkgutil
 from pathlib import Path
 from typing import Callable, Dict, List
 
-from sonic.tools.interfaces.clear_interface_counters import clear_interface_counters
-from sonic.tools.interfaces.get_interfaces import get_interfaces
-from sonic.tools.interfaces.get_ip_interfaces import get_ip_interfaces
-from sonic.tools.interfaces.set_interface_admin_status import set_interface_admin_status
-from sonic.tools.interfaces.set_interface_description import set_interface_description
-from sonic.tools.interfaces.set_interface_mtu import set_interface_mtu
-from sonic.tools.l2.add_vlan import add_vlan
-from sonic.tools.l2.get_arp_table import get_arp_table
-from sonic.tools.l2.get_portchannels import get_portchannels
-from sonic.tools.l2.get_vlans import get_vlans
-from sonic.tools.l2.remove_vlan import remove_vlan
-from sonic.tools.lldp.get_lldp_neighbors import get_lldp_neighbors
-from sonic.tools.multi.get_bgp_summary_all import get_bgp_summary_all
-from sonic.tools.multi.get_interfaces_all import get_interfaces_all
-from sonic.tools.multi.get_lldp_neighbors_all import get_lldp_neighbors_all
-from sonic.tools.multi.get_routes_all import get_routes_all
-from sonic.tools.multi.get_system_info_all import get_system_info_all
-from sonic.tools.multi.get_vlans_all import get_vlans_all
-from sonic.tools.routing.get_bgp_summary import get_bgp_summary
-from sonic.tools.routing.get_ipv6_routes import get_ipv6_routes
-from sonic.tools.routing.get_routes import get_routes
-from sonic.tools.sampling.get_sflow_status import get_sflow_status
-from sonic.tools.system.config_save import config_save
-from sonic.tools.system.get_mutation_history import get_mutation_history
-from sonic.tools.system.get_platform_detail import get_platform_detail
-from sonic.tools.system.get_system_info import get_system_info
-from sonic.tools.system.run_show_command import run_show_command
+import sonic.tools as _tools_pkg
+from mcp_runtime.logging import get_logger
 
 
+logger = get_logger("mcp.registry")
 TOOLS_FILE = Path("generated/mcp_tools.json")
+
+
+def _discover_handlers() -> Dict[str, Callable]:
+    """Walk sonic.tools.* packages, import every non-underscore module,
+    and pick out the function that matches the module's stem.
+    """
+    handlers: Dict[str, Callable] = {}
+    for mod_info in pkgutil.walk_packages(_tools_pkg.__path__, prefix=f"{_tools_pkg.__name__}."):
+        if mod_info.ispkg:
+            continue
+        # Skip helper modules whose basename starts with '_'.
+        stem = mod_info.name.rsplit(".", 1)[-1]
+        if stem.startswith("_"):
+            continue
+        try:
+            module = importlib.import_module(mod_info.name)
+        except Exception as e:
+            # A broken plugin shouldn't crash the whole server at boot —
+            # log loudly and keep going.
+            logger.error("plugin import failed: %s (%s)", mod_info.name, e)
+            continue
+        fn = getattr(module, stem, None)
+        if fn is None or not callable(fn):
+            logger.warning(
+                "plugin %s has no callable named %r — skipping",
+                mod_info.name, stem,
+            )
+            continue
+        if stem in handlers:
+            # Same tool name from two different categories = programming error.
+            logger.error(
+                "duplicate tool name %r from %s (already bound to %s)",
+                stem, mod_info.name, handlers[stem].__module__,
+            )
+            continue
+        handlers[stem] = fn
+    return handlers
 
 
 class MCPRegistry:
@@ -57,48 +82,22 @@ class MCPRegistry:
                 continue
             self.tools[name] = tool
 
-        self.handlers.update(
-            {
-                "get_interfaces": get_interfaces,
-                "get_ip_interfaces": get_ip_interfaces,
-                "get_routes": get_routes,
-                "get_ipv6_routes": get_ipv6_routes,
-                "get_bgp_summary": get_bgp_summary,
-                "get_lldp_neighbors": get_lldp_neighbors,
-                "get_vlans": get_vlans,
-                "get_arp_table": get_arp_table,
-                "get_portchannels": get_portchannels,
-                "get_platform_detail": get_platform_detail,
-                "get_sflow_status": get_sflow_status,
-                "get_system_info": get_system_info,
-                "get_system_info_all": get_system_info_all,
-                "get_interfaces_all": get_interfaces_all,
-                "get_bgp_summary_all": get_bgp_summary_all,
-                "get_routes_all": get_routes_all,
-                "get_lldp_neighbors_all": get_lldp_neighbors_all,
-                "get_vlans_all": get_vlans_all,
-                "set_interface_admin_status": set_interface_admin_status,
-                "set_interface_mtu": set_interface_mtu,
-                "set_interface_description": set_interface_description,
-                "clear_interface_counters": clear_interface_counters,
-                "add_vlan": add_vlan,
-                "remove_vlan": remove_vlan,
-                "config_save": config_save,
-                "get_mutation_history": get_mutation_history,
-                "run_show_command": run_show_command,
-            }
-        )
+        # Plugin-style auto-discovery: every non-underscore module under
+        # sonic.tools.* that exports a function matching its stem becomes
+        # a handler. Registry is populated in one sweep at boot.
+        self.handlers.update(_discover_handlers())
 
         missing_spec = [n for n in self.handlers if n not in self.tools]
         missing_handler = [n for n in self.tools if n not in self.handlers]
         if missing_spec:
             raise RuntimeError(
-                f"handlers registered without catalog entries: {missing_spec}"
+                f"handlers discovered without catalog entries: {missing_spec}"
             )
         if missing_handler:
             raise RuntimeError(
                 f"catalog entries without handlers: {missing_handler}"
             )
+        logger.info("registry loaded: %d tools (discovered from sonic.tools.*)", len(self.handlers))
         return self
 
     def list_tools(self) -> List[dict]:

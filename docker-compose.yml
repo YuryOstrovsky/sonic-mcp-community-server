@@ -1,0 +1,58 @@
+# SONiC MCP Community Server — one-command lab deployment.
+#
+# Prerequisites on the host:
+#   1. Copy .env.example -> .env and fill in SONIC_DEFAULT_USERNAME + PASSWORD
+#      (and any per-host overrides you need).
+#   2. Optionally create config/fabric_intent.json for intent auditing.
+#
+# Run:
+#     docker compose up -d
+#     curl http://localhost:8000/tools | jq 'length'
+#
+# The image is stateless — every lab-specific thing lives in the mounted
+# ./config and ./logs directories and the .env file.
+
+services:
+  mcp:
+    # build: .
+    image: sonic-mcp-community-server:latest
+    container_name: sonic-mcp
+    restart: unless-stopped
+
+    # .env is loaded automatically by compose. Additionally we pin the
+    # intent-file path to the in-container mount point so it matches no
+    # matter where users keep their intent JSON on the host.
+    env_file:
+      - .env
+    environment:
+      - SONIC_FABRIC_INTENT_PATH=/app/config/fabric_intent.json
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      # Intent file(s) — editable from the host. Read-only inside the
+      # container (the tool re-reads the file every invocation, no need
+      # for write access from within).
+      - ./config:/app/config:ro
+      # Mutation ledger — the container appends to this JSONL. Persists
+      # across container restarts because it lives on the host filesystem.
+      - ./logs:/app/logs
+      # Fabric snapshots (save/restore_fabric_snapshot) — persist on host.
+      - ./snapshots:/app/snapshots
+
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+    # Reasonable sandboxing for a lab service — operators needing more can
+    # layer on AppArmor profiles etc. via their own compose override file.
+    security_opt:
+      - no-new-privileges:true
+    read_only: false   # /tmp writes (paramiko known_hosts cache) need rw rootfs
+    tmpfs:
+      - /tmp

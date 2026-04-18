@@ -1,0 +1,38 @@
+{
+  "switches": {
+    "10.46.11.50": {
+      "asn": 65100,
+      "hostname": "vm1",
+      "expected_bgp_peers": [
+        {
+          "peer_ip": "192.168.1.2",
+          "remote_asn": 65100
+        }
+      ],
+      "expected_interfaces": [
+        {
+          "name": "Ethernet0",
+          "address": "192.168.1.1/30",
+          "mtu": 9100
+        }
+      ]
+    },
+    "10.46.11.51": {
+      "asn": 65100,
+      "hostname": "vm2",
+      "expected_bgp_peers": [
+        {
+          "peer_ip": "192.168.1.1",
+          "remote_asn": 65100
+        }
+      ],
+      "expected_interfaces": [
+        {
+          "name": "Ethernet0",
+          "address": "192.168.1.2/30",
+          "mtu": 9100
+        }
+      ]
+    }
+  }
+}

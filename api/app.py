@@ -191,10 +191,93 @@ def health():
 
 @app.get("/metrics")
 def metrics():
+    """Prometheus scrape endpoint.
+
+    Before emitting, we refresh cheap gauges (tools, inventory, ledger
+    depth) in-line. Fabric-health gauges are refreshed at most once per
+    METRIC_FABRIC_REFRESH_S seconds — they require fanout SSH so we don't
+    want to hammer the switches on every scrape.
+    """
+    _refresh_cheap_gauges()
+    _refresh_fabric_gauges_if_stale()
     return Response(
         content=generate_latest(),
         media_type=CONTENT_TYPE_LATEST,
     )
+
+
+# ---------------- Gauge refresh helpers ----------------
+
+_FABRIC_REFRESH_S = 30.0
+_last_fabric_refresh = 0.0
+
+
+def _refresh_cheap_gauges() -> None:
+    from mcp_runtime.metrics import (
+        MCP_INVENTORY_DEVICES, MCP_LEDGER_ENTRIES, MCP_LEDGER_FAILURES_24H,
+        MCP_TOOLS_BY_RISK, MCP_TOOLS_TOTAL,
+    )
+    from mcp_runtime.mutation_ledger import LEDGER
+
+    tools = mcp.list_tools()
+    MCP_TOOLS_TOTAL.set(len(tools))
+    by_risk: Dict[str, int] = {}
+    for t in tools:
+        r = (t.get("policy") or {}).get("risk") or "UNKNOWN"
+        by_risk[r] = by_risk.get(r, 0) + 1
+    for risk, n in by_risk.items():
+        MCP_TOOLS_BY_RISK.labels(risk=risk).set(n)
+
+    MCP_INVENTORY_DEVICES.set(len(mcp.inventory.all_ips()))
+
+    entries = LEDGER.tail(n=2000)
+    MCP_LEDGER_ENTRIES.set(len(entries))
+
+    # Failed mutations in the last 24h.
+    import datetime as _dt
+    cutoff = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=24)
+    failed = 0
+    for e in entries:
+        if e.get("status") != "failed":
+            continue
+        ts = e.get("timestamp") or ""
+        try:
+            t = _dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except Exception:
+            continue
+        if t >= cutoff:
+            failed += 1
+    MCP_LEDGER_FAILURES_24H.set(failed)
+
+
+def _refresh_fabric_gauges_if_stale() -> None:
+    """Populate fabric-health gauges. Rate-limited to one run every 30s
+    so scraping doesn't fanout SSH on every Prometheus poll (which
+    defaults to every 15s and would hammer the switches)."""
+    global _last_fabric_refresh
+    now = time.time()
+    if now - _last_fabric_refresh < _FABRIC_REFRESH_S:
+        return
+    _last_fabric_refresh = now
+
+    try:
+        from mcp_runtime.metrics import (
+            MCP_FABRIC_BGP_BROKEN, MCP_FABRIC_BGP_HEALTHY,
+            MCP_FABRIC_BGP_ORPHAN, MCP_FABRIC_UNREACHABLE,
+        )
+        from sonic.tools.fabric.get_fabric_health import get_fabric_health
+        result = get_fabric_health(
+            inputs={"include_lldp": False},
+            registry=mcp, transport=mcp.transport, context={},
+        )
+        s = result.get("summary") or {}
+        MCP_FABRIC_BGP_HEALTHY.set(int(s.get("healthy") or 0))
+        MCP_FABRIC_BGP_BROKEN.set(int(s.get("broken") or 0))
+        MCP_FABRIC_BGP_ORPHAN.set(int(s.get("orphan") or 0))
+        MCP_FABRIC_UNREACHABLE.set(int(s.get("unreachable") or 0))
+    except Exception as e:
+        # Don't kill a /metrics scrape because fabric-health had a blip.
+        logger.warning("fabric gauge refresh failed: %s", e)
 
 # Fix #9: per-check timeout so /ready cannot hang indefinitely
 _READY_TIMEOUT = 10  # seconds
@@ -245,3 +328,107 @@ def readiness_check(response: Response):
 
     response.status_code = 503
     return {"status": "not_ready", "checks": checks, "errors": errors}
+
+
+# -------------------------------------------------
+# Fabric intent file — GET/PUT the JSON that
+# validate_fabric_vs_intent consumes. Lets operators
+# maintain intent from the web client without SSHing
+# into the server / container.
+# -------------------------------------------------
+
+import json as _json
+from pathlib import Path as _Path
+
+_INTENT_ENV_VAR = "SONIC_FABRIC_INTENT_PATH"
+_INTENT_DEFAULT_REL = _Path("config") / "fabric_intent.json"
+
+
+def _intent_path() -> _Path:
+    env = os.environ.get(_INTENT_ENV_VAR)
+    return _Path(env) if env else _INTENT_DEFAULT_REL
+
+
+@app.get("/fabric/intent")
+def fabric_intent_get():
+    """Return the current intent JSON content along with its path.
+
+    When the file is missing, returns {exists: False, content: null} with
+    200 so the client can render an empty editor rather than dealing with
+    a 404. The path is always included so the UI can tell the user where
+    on disk it lives.
+    """
+    path = _intent_path()
+    if not path.exists():
+        return {
+            "exists": False,
+            "path": str(path),
+            "content": None,
+            "source": "env" if os.environ.get(_INTENT_ENV_VAR) else "default",
+        }
+    try:
+        text = path.read_text(encoding="utf-8")
+        parsed = _json.loads(text)  # validate it's parseable
+        return {
+            "exists": True,
+            "path": str(path),
+            "content": parsed,
+            "raw": text,
+            "size_bytes": len(text.encode("utf-8")),
+            "source": "env" if os.environ.get(_INTENT_ENV_VAR) else "default",
+        }
+    except _json.JSONDecodeError as e:
+        # File exists but is malformed — surface raw text so the user can
+        # fix it in the editor.
+        return {
+            "exists": True,
+            "path": str(path),
+            "content": None,
+            "raw": path.read_text(encoding="utf-8", errors="replace"),
+            "parse_error": f"invalid JSON: {e}",
+            "source": "env" if os.environ.get(_INTENT_ENV_VAR) else "default",
+        }
+
+
+class _IntentPutBody(BaseModel):
+    # Accept either parsed content (dict) or raw JSON text, to keep the
+    # client simple. If both are present, `content` wins.
+    content: Optional[Dict[str, Any]] = None
+    raw: Optional[str] = None
+
+
+@app.put("/fabric/intent")
+def fabric_intent_put(body: _IntentPutBody):
+    """Write a new intent file. Validates JSON before touching disk.
+
+    Atomic write: data is written to a sibling `.tmp` file and rename()d
+    over the target — readers never see a half-written file.
+    """
+    if body.content is None and (body.raw is None or not body.raw.strip()):
+        raise HTTPException(400, "provide either `content` (object) or `raw` (JSON string)")
+
+    if body.content is not None:
+        parsed = body.content
+    else:
+        try:
+            parsed = _json.loads(body.raw)
+        except _json.JSONDecodeError as e:
+            raise HTTPException(400, f"invalid JSON: {e}")
+
+    if not isinstance(parsed, dict):
+        raise HTTPException(400, "intent must be a JSON object at the top level")
+
+    path = _intent_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(_json.dumps(parsed, indent=2) + "\n", encoding="utf-8")
+        tmp.replace(path)
+    except OSError as e:
+        raise HTTPException(500, f"could not write intent file at {path}: {e}")
+
+    return {
+        "ok": True,
+        "path": str(path),
+        "size_bytes": path.stat().st_size,
+    }

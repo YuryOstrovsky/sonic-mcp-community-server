@@ -1,54 +1,57 @@
-__pycache__/
-*.pyc
-.env
-.env.*
 # Python
-__pycache__/
-*.pyc
-*.pyo
-
-# Virtual environments
-.venv/
-venv/
-
-
-# Archives / scratch
-archive/
-*.zip
-
-# Secrets
-.env
-*.sh
-
-# OS junk
-.DS_Store
-
-# Archives / legacy
-archive/
-xco-mcp-archive/
-
-# Generated artifacts
-*.zip
-
-# Python noise
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-# Virtualenv
+# Virtual environments
 .venv/
 venv/
 
-# Test tools
-test*
-xco_get_token.py
-mcp-server.log
+# Secrets — never commit
+.env
+.env.*
 
-# Runtime logs (keep folder structure, ignore actual log files)
+# OS junk
+.DS_Store
+*.swp
+*.swo
+
+# Legacy archives (from the XCO lineage)
+archive/
+xco-mcp-archive/
+
+# Generated artifact noise
+*.zip
+generated/*.bak
+generated/*.backup
+
+# Runtime state — keep the directory structure but ignore the data.
+# `logs/.gitkeep` / `config/.gitkeep` / `snapshots/.gitkeep` are the
+# placeholders that make the empty dirs survive in git.
 logs/*
 !logs/.gitkeep
+config/*
+!config/.gitkeep
+!config/fabric_intent.example.json
+snapshots/*
+!snapshots/.gitkeep
 
 # Smoketest results
 smoke-test/*.json
 smoke-test/*.txt
+
+# Test / CI cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# Claude / assistant state
+.claude/
+CLAUDE.md

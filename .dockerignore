@@ -1,54 +1,54 @@
-# Git
+# Git + developer metadata — nothing runtime needs
 .git/
 .gitignore
+.github/
 
-# Environment (user provides their own)
+# Credentials + lab-specific state — MUST not be baked into the image.
+# The docker-compose.yml bind-mounts these from the host.
 .env
-
-# Dev/build utilities
-xco_get_token.py
-push.sh
-
-# Smoke tests
-smoke-test/
-
-# Build-time tool generators (not needed at runtime)
-tools/apply_gateway_rules.py
-tools/classify_endpoints.py
-tools/generate_mcp_tools.py
-tools/parse_openapi.py
-tools/probe_read_endpoints.py
-tools/resolve_endpoints.py
-tools/validate_context_samples.py
-tools/validate_endpoints.py
-
-# Source OpenAPI specs (only the generated server spec is needed)
-openapi/openapi-specs/
-
-# Intermediate generated artifacts (only mcp_tools.json, mcp_capabilities.json, services.json needed)
-generated/*.bak
-generated/endpoints.json
-generated/final_endpoints.json
-generated/resolved_endpoints.json
-generated/validated_endpoints.json
-
-# Runtime logs (container should write to stdout)
+.env.*
+config/
 logs/
 
-# Python caches
+# Local virtualenv, caches
+.venv/
+venv/
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 
-# IDE / editor
+# Build / CI outputs
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+
+# Smoke tests + dev docs stay in the repo but aren't shipped in the image
+smoke-test/
+docs/
+sonic_initial_docs/
+
+# Editor / OS junk
 .vscode/
 .idea/
+.DS_Store
 *.swp
 *.swo
 
-# Repo README (Docker has its own)
-README.md
+# Intermediate / backup generated artifacts
+generated/*.bak
+generated/*.backup
 
-# Claude / AI assistant
+# Claude / assistant state
 .claude/
 CLAUDE.md
+
+# Quarantined legacy code (if still around)
+_legacy/
+archive/
+xco-mcp-archive/

@@ -1,0 +1,5 @@
+# Dev / CI-only dependencies. Not installed in the Docker runtime image.
+-r requirements.txt
+pytest>=7.4
+pytest-cov>=4.1
+ruff>=0.5

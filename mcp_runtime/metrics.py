@@ -68,3 +68,60 @@ MCP_INVOKE_STATUS = Counter(
 )
 
 
+# ----------------------------------------
+# Fleet + registry gauges
+# ----------------------------------------
+from prometheus_client import Gauge
+
+MCP_TOOLS_TOTAL = Gauge(
+    "mcp_tools_total",
+    "Total number of tools registered in the MCP server",
+)
+
+MCP_TOOLS_BY_RISK = Gauge(
+    "mcp_tools_by_risk",
+    "Tools registered per risk tier",
+    ["risk"],
+)
+
+MCP_INVENTORY_DEVICES = Gauge(
+    "mcp_inventory_devices_total",
+    "Number of SONiC switches in the inventory",
+)
+
+MCP_LEDGER_ENTRIES = Gauge(
+    "mcp_ledger_entries_total",
+    "Number of entries currently in the mutation ledger",
+)
+
+MCP_LEDGER_FAILURES_24H = Gauge(
+    "mcp_ledger_failures_24h",
+    "Count of failed mutations in the past 24 hours",
+)
+
+
+# ----------------------------------------
+# Fabric-health gauges (populated by /metrics scrape hook in api/app.py)
+# ----------------------------------------
+
+MCP_FABRIC_BGP_HEALTHY = Gauge(
+    "mcp_fabric_bgp_healthy",
+    "Number of BGP adjacencies currently established",
+)
+
+MCP_FABRIC_BGP_BROKEN = Gauge(
+    "mcp_fabric_bgp_broken",
+    "Number of BGP adjacencies present in inventory but NOT established",
+)
+
+MCP_FABRIC_BGP_ORPHAN = Gauge(
+    "mcp_fabric_bgp_orphan",
+    "Number of configured BGP peers whose peer IP is not an inventory switch",
+)
+
+MCP_FABRIC_UNREACHABLE = Gauge(
+    "mcp_fabric_unreachable_switches",
+    "Inventory switches that didn't answer the last fabric-health probe",
+)
+
+
