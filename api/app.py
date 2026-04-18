@@ -432,3 +432,172 @@ def fabric_intent_put(body: _IntentPutBody):
         "path": str(path),
         "size_bytes": path.stat().st_size,
     }
+
+
+# -------------------------------------------------
+# Fabric inventory — GET / PUT / POST / DELETE
+# Live-reloaded from $SONIC_INVENTORY_PATH (default
+# config/inventory.json). The client's Settings view
+# uses these endpoints to manage switches without
+# editing Python or restarting the container.
+# -------------------------------------------------
+
+import concurrent.futures as _concurrent_futures
+from sonic.inventory import SonicDevice as _SonicDevice
+
+
+class _InventoryDeviceBody(BaseModel):
+    name: str
+    mgmt_ip: str
+    tags: list = []
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+
+class _InventoryPutBody(BaseModel):
+    switches: list[_InventoryDeviceBody]
+
+
+def _device_view(d: _SonicDevice) -> Dict[str, Any]:
+    """Shape a device for the wire. Never leak the password — the UI
+    only needs to know that one is set."""
+    return {
+        "name": d.name,
+        "mgmt_ip": d.mgmt_ip,
+        "tags": list(d.tags or ()),
+        "username": d.username,
+        "has_password": bool(d.password),
+    }
+
+
+@app.get("/inventory")
+def inventory_get():
+    inv = mcp.inventory
+    return {
+        "path": inv.path(),
+        "source": inv.source(),
+        "switches": [_device_view(d) for d in inv.devices],
+    }
+
+
+@app.put("/inventory")
+def inventory_put(body: _InventoryPutBody):
+    """Replace the entire inventory with the given list."""
+    devs = [
+        _SonicDevice(
+            name=s.name.strip() or s.mgmt_ip,
+            mgmt_ip=s.mgmt_ip.strip(),
+            tags=tuple(str(t) for t in (s.tags or [])),
+            username=s.username or None,
+            password=s.password or None,
+        )
+        for s in body.switches
+    ]
+    _validate_devices(devs)
+    mcp.inventory.save(devs)
+    return inventory_get()
+
+
+@app.post("/inventory/switches")
+def inventory_add(body: _InventoryDeviceBody):
+    """Add or update a single switch. Replaces any existing entry with
+    the same mgmt_ip."""
+    existing = list(mcp.inventory.devices)
+    new = _SonicDevice(
+        name=body.name.strip() or body.mgmt_ip,
+        mgmt_ip=body.mgmt_ip.strip(),
+        tags=tuple(str(t) for t in (body.tags or [])),
+        username=body.username or None,
+        password=body.password or None,
+    )
+    _validate_devices([new])
+    existing = [d for d in existing if d.mgmt_ip != new.mgmt_ip]
+    existing.append(new)
+    mcp.inventory.save(existing)
+    return inventory_get()
+
+
+@app.delete("/inventory/switches/{mgmt_ip}")
+def inventory_delete(mgmt_ip: str):
+    existing = list(mcp.inventory.devices)
+    remaining = [d for d in existing if d.mgmt_ip != mgmt_ip]
+    if len(remaining) == len(existing):
+        raise HTTPException(404, f"switch {mgmt_ip} not in inventory")
+    mcp.inventory.save(remaining)
+    return inventory_get()
+
+
+class _InventoryProbeBody(BaseModel):
+    mgmt_ip: str
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+
+@app.post("/inventory/probe")
+def inventory_probe(body: _InventoryProbeBody):
+    """Test RESTCONF + SSH reachability with given creds — without
+    persisting anything. Returns the same shape as /ready's per-device
+    check so the UI can reuse its status rendering.
+
+    If only `mgmt_ip` is sent, falls back to env-default credentials.
+    """
+    # Use a temporary inventory override so the transport picks up the
+    # probed credentials without touching the live inventory.
+    ip = body.mgmt_ip.strip()
+    if not ip:
+        raise HTTPException(400, "mgmt_ip is required")
+
+    status: Dict[str, Any] = {"mgmt_ip": ip, "restconf": False, "ssh": False, "errors": []}
+    # We build a transient SonicDevice in a fake inventory so the shared
+    # credential resolver sees the override without us poking internals.
+    from sonic.inventory import SonicInventory as _SI
+    probe_inv = _SI(devices=[_SonicDevice(
+        name=ip, mgmt_ip=ip,
+        username=body.username or None,
+        password=body.password or None,
+    )])
+    # Swap inventory on the existing transports for the duration of
+    # the probe, then restore.
+    prev_rc, prev_ssh = mcp.transport.restconf.inventory, mcp.transport.ssh.inventory
+    mcp.transport.restconf.inventory = probe_inv
+    mcp.transport.ssh.inventory = probe_inv
+    # Also invalidate any cached session/client for this IP so the
+    # probe actually uses the supplied credentials.
+    mcp.transport.restconf._sessions.pop(ip, None)
+    try:
+        mcp.transport.ssh._clients.pop(ip, None)
+    except Exception:
+        pass
+    try:
+        with _concurrent_futures.ThreadPoolExecutor(max_workers=2) as ex:
+            rc_fut = ex.submit(mcp.transport.restconf.probe, ip)
+            ssh_fut = ex.submit(mcp.transport.ssh.probe, ip)
+            try:
+                status["restconf"] = bool(rc_fut.result(timeout=_READY_TIMEOUT))
+            except Exception as e:
+                status["errors"].append(f"restconf: {e}")
+            try:
+                status["ssh"] = bool(ssh_fut.result(timeout=_READY_TIMEOUT))
+            except Exception as e:
+                status["errors"].append(f"ssh: {e}")
+    finally:
+        # Always restore — don't let a probe silently rewire live state.
+        mcp.transport.restconf.inventory = prev_rc
+        mcp.transport.ssh.inventory = prev_ssh
+        mcp.transport.restconf._sessions.pop(ip, None)
+        try:
+            mcp.transport.ssh._clients.pop(ip, None)
+        except Exception:
+            pass
+    return status
+
+
+def _validate_devices(devices):
+    """Common sanity checks for POST/PUT bodies."""
+    seen = set()
+    for d in devices:
+        if not d.mgmt_ip:
+            raise HTTPException(400, "each switch needs mgmt_ip")
+        if d.mgmt_ip in seen:
+            raise HTTPException(400, f"duplicate mgmt_ip: {d.mgmt_ip}")
+        seen.add(d.mgmt_ip)

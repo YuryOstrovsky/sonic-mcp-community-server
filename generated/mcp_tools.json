@@ -1968,5 +1968,47 @@
       "snapshot",
       "diff"
     ]
+  },
+  {
+    "name": "discover_fabric_from_seed",
+    "description": "Walk LLDP neighbors from a seed switch (up to max_hops) and propose new inventory additions. Returns a diff \u2014 does NOT mutate the inventory; the caller decides whether to add any proposal. Works best on real hardware (SONiC VS has known LLDP-RX issues).",
+    "category": "fabric",
+    "transport": "mixed",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "seed_switch_ip": {
+          "type": "string",
+          "description": "Management IP of an existing inventory member to start from."
+        },
+        "switch_ip": {
+          "type": "string",
+          "description": "Alias for seed_switch_ip."
+        },
+        "max_hops": {
+          "type": "integer",
+          "description": "LLDP walk depth (default 2, range 1..5).",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "probe": {
+          "type": "boolean",
+          "description": "Reachability-probe each proposal via RESTCONF+SSH before reporting it (default true)."
+        }
+      },
+      "required": []
+    },
+    "policy": {
+      "risk": "SAFE_READ",
+      "allowed_in_auto_mode": true,
+      "requires_confirmation": false
+    },
+    "tags": [
+      "read",
+      "fabric",
+      "discovery",
+      "lldp",
+      "inventory"
+    ]
   }
 ]

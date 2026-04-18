@@ -1,17 +1,22 @@
-"""Env-driven credential resolver for SONiC devices.
+"""Credential resolver for SONiC devices.
 
-Resolution order for a given switch IP:
-    1. SONIC_HOST_<ip-with-dots-as-underscores>_USERNAME / _PASSWORD
-    2. SONIC_DEFAULT_USERNAME / SONIC_DEFAULT_PASSWORD
-    3. Built-in lab defaults (admin / password)
+Resolution order for a given switch IP (first non-empty wins):
 
-Per-host overrides let operators rotate one switch's password without changing defaults.
+  1. Per-device override in inventory.json  (SonicDevice.username / .password)
+  2. SONIC_HOST_<ip-with-dots-as-underscores>_USERNAME / _PASSWORD
+  3. SONIC_DEFAULT_USERNAME / SONIC_DEFAULT_PASSWORD
+  4. Built-in lab defaults (admin / password)
+
+The inventory-level override lets operators stamp out per-switch
+credentials in a single JSON file managed from the web client,
+without having to set N env vars.
 """
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -20,15 +25,23 @@ class SonicCredentials:
     password: str
 
     @classmethod
-    def for_host(cls, switch_ip: str) -> "SonicCredentials":
+    def for_host(
+        cls,
+        switch_ip: str,
+        *,
+        inventory_username: Optional[str] = None,
+        inventory_password: Optional[str] = None,
+    ) -> "SonicCredentials":
         key = "SONIC_HOST_" + switch_ip.replace(".", "_")
         user = (
-            os.environ.get(f"{key}_USERNAME")
+            inventory_username
+            or os.environ.get(f"{key}_USERNAME")
             or os.environ.get("SONIC_DEFAULT_USERNAME")
             or "admin"
         )
         pw = (
-            os.environ.get(f"{key}_PASSWORD")
+            inventory_password
+            or os.environ.get(f"{key}_PASSWORD")
             or os.environ.get("SONIC_DEFAULT_PASSWORD")
             or "password"
         )

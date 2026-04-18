@@ -23,6 +23,19 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 _ALLOWED = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"}
 
 
+def _inventory_override(inventory, switch_ip: str):
+    """Return (username, password) from the inventory entry if it carries
+    per-device credentials; else (None, None). Tolerant of a missing or
+    partially-configured inventory."""
+    if inventory is None:
+        return None, None
+    try:
+        dev = inventory.resolve(switch_ip)
+        return getattr(dev, "username", None), getattr(dev, "password", None)
+    except Exception:
+        return None, None
+
+
 class RestconfError(Exception):
     pass
 
@@ -47,13 +60,22 @@ class SonicRestconfTransport:
         self._sessions: Dict[str, requests.Session] = {}
         self._lock = threading.Lock()
         self.logger = get_logger("sonic.restconf")
+        # Set by SonicTransport.__init__ so the transport can look up
+        # per-device credential overrides from the inventory JSON without
+        # introducing a circular import.
+        self.inventory = None
 
     def _session_for(self, switch_ip: str) -> requests.Session:
         with self._lock:
             s = self._sessions.get(switch_ip)
             if s is not None:
                 return s
-            creds = SonicCredentials.for_host(switch_ip)
+            override_u, override_p = _inventory_override(self.inventory, switch_ip)
+            creds = SonicCredentials.for_host(
+                switch_ip,
+                inventory_username=override_u,
+                inventory_password=override_p,
+            )
             s = requests.Session()
             s.auth = (creds.username, creds.password)
             s.verify = self.verify_tls

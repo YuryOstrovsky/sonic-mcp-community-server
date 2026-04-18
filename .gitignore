@@ -34,6 +34,7 @@ logs/*
 config/*
 !config/.gitkeep
 !config/fabric_intent.example.json
+!config/inventory.example.json
 snapshots/*
 !snapshots/.gitkeep
 

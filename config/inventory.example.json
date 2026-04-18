@@ -1,0 +1,15 @@
+{
+  "_comment": "Example SONiC MCP inventory. Copy to inventory.json and edit. Per-device username/password are optional; defaults fall back to SONIC_DEFAULT_USERNAME / _PASSWORD from .env, then to 'admin'/'password'.",
+  "switches": [
+    {
+      "name": "vm1",
+      "mgmt_ip": "10.46.11.50",
+      "tags": ["lab", "vm", "sonic-vs"]
+    },
+    {
+      "name": "vm2",
+      "mgmt_ip": "10.46.11.51",
+      "tags": ["lab", "vm", "sonic-vs"]
+    }
+  ]
+}

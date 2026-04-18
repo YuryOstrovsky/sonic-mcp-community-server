@@ -21,6 +21,10 @@ class SonicTransport:
         self.inventory = inventory or SonicInventory()
         self.restconf = SonicRestconfTransport()
         self.ssh = SonicSshTransport()
+        # Give sub-transports a handle to the inventory so they can
+        # honour per-device credential overrides from inventory.json.
+        self.restconf.inventory = self.inventory
+        self.ssh.inventory = self.inventory
 
     def probe_host(self, switch_ip: str) -> dict:
         return {

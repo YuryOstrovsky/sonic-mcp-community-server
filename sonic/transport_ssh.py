@@ -40,6 +40,9 @@ class SonicSshTransport:
         self._clients: Dict[str, paramiko.SSHClient] = {}
         self._lock = threading.Lock()
         self.logger = get_logger("sonic.ssh")
+        # Set by SonicTransport.__init__ so we can honour per-device
+        # credential overrides stored in inventory.json.
+        self.inventory = None
 
     def _is_alive(self, client: paramiko.SSHClient) -> bool:
         t = client.get_transport()
@@ -57,7 +60,19 @@ class SonicSshTransport:
                 except Exception:
                     pass
 
-            creds = SonicCredentials.for_host(switch_ip)
+            override_u = override_p = None
+            if self.inventory is not None:
+                try:
+                    dev = self.inventory.resolve(switch_ip)
+                    override_u = getattr(dev, "username", None)
+                    override_p = getattr(dev, "password", None)
+                except Exception:
+                    pass
+            creds = SonicCredentials.for_host(
+                switch_ip,
+                inventory_username=override_u,
+                inventory_password=override_p,
+            )
             c = paramiko.SSHClient()
             c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             c.connect(
