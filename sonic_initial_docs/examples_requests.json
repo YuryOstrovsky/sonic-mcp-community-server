@@ -1,0 +1,14 @@
+[
+{
+"tool": "get_interfaces",
+"inputs": {
+"switch_ip": "10.46.11.50"
+}
+},
+{
+"tool": "get_routes",
+"inputs": {
+"switch_ip": "10.46.11.51"
+}
+}
+]

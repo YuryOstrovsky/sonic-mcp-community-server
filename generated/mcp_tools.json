@@ -1,0 +1,505 @@
+[
+  {
+    "name": "get_interfaces",
+    "description": "Retrieve interface status, admin/oper state, MTU, port speed, and traffic counters for a SONiC switch. Source: RESTCONF openconfig-interfaces.",
+    "category": "interfaces",
+    "transport": "restconf",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {"type": "string", "description": "Management IP of the SONiC switch (required)."},
+        "name": {"type": "string", "description": "Optional interface name filter (exact match, e.g. 'Ethernet0')."}
+      },
+      "required": ["switch_ip"]
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "interfaces", "openconfig", "tier2"]
+  },
+  {
+    "name": "get_ip_interfaces",
+    "description": "List IPv4 and IPv6 address assignments per interface/subinterface for a SONiC switch. Source: RESTCONF openconfig-interfaces subinterfaces.",
+    "category": "interfaces",
+    "transport": "restconf",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {"type": "string", "description": "Management IP of the SONiC switch (required)."}
+      },
+      "required": ["switch_ip"]
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "interfaces", "l3", "openconfig", "tier2"]
+  },
+  {
+    "name": "get_routes",
+    "description": "Retrieve the IPv4 routing table (with nexthops, protocol, distance, metric, uptime) from FRR via 'vtysh show ip route json' over SSH.",
+    "category": "routing",
+    "transport": "ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {"type": "string", "description": "Management IP of the SONiC switch (required)."},
+        "vrf": {"type": "string", "description": "Optional VRF name. When omitted, the default VRF is queried."}
+      },
+      "required": ["switch_ip"]
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "routing", "ipv4", "frr", "tier2"]
+  },
+  {
+    "name": "get_ipv6_routes",
+    "description": "Retrieve the IPv6 routing table (with nexthops, protocol, distance, metric, uptime) from FRR via 'vtysh show ipv6 route json' over SSH.",
+    "category": "routing",
+    "transport": "ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {"type": "string", "description": "Management IP of the SONiC switch (required)."},
+        "vrf": {"type": "string", "description": "Optional VRF name. When omitted, the default VRF is queried."}
+      },
+      "required": ["switch_ip"]
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "routing", "ipv6", "frr", "tier2"]
+  },
+  {
+    "name": "get_bgp_summary",
+    "description": "Retrieve BGP IPv4 and IPv6 peer summary (peer state, uptime, prefixes rcvd/sent, msg counts) from FRR via 'vtysh show ip bgp summary json' + 'show bgp ipv6 summary json' over SSH.",
+    "category": "routing",
+    "transport": "ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {"type": "string", "description": "Management IP of the SONiC switch (required)."},
+        "vrf": {"type": "string", "description": "Optional VRF name. Defaults to the default VRF."},
+        "include_ipv6": {"type": "boolean", "description": "Include IPv6 peer summary. Defaults to true."}
+      },
+      "required": ["switch_ip"]
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "routing", "bgp", "frr", "tier2"]
+  },
+  {
+    "name": "get_lldp_neighbors",
+    "description": "Retrieve LLDP neighbors, local advertisement, and per-interface TX/RX statistics. Combines RESTCONF openconfig-lldp (primary) with lldpcli JSON over SSH (fallback + diagnostics). On SONiC VS, neighbor reception is known to be unreliable — the tool reports that explicitly when TX>0 and RX=0.",
+    "category": "lldp",
+    "transport": "restconf+ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {"type": "string", "description": "Management IP of the SONiC switch (required)."}
+      },
+      "required": ["switch_ip"]
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "lldp", "topology", "openconfig", "tier2"]
+  },
+  {
+    "name": "get_vlans",
+    "description": "List configured VLANs with IP assignment, member ports, and port-tagging mode. Source: 'show vlan brief' over SSH.",
+    "category": "l2",
+    "transport": "ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {"type": "string", "description": "Management IP of the SONiC switch (required)."}
+      },
+      "required": ["switch_ip"]
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "vlan", "l2", "tier2"]
+  },
+  {
+    "name": "get_arp_table",
+    "description": "Retrieve the ARP/IPv4-neighbor table with IP, MAC, interface, and VLAN. Source: 'show arp' over SSH.",
+    "category": "l2",
+    "transport": "ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {"type": "string", "description": "Management IP of the SONiC switch (required)."}
+      },
+      "required": ["switch_ip"]
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "arp", "neighbor", "l2", "tier2"]
+  },
+  {
+    "name": "get_portchannels",
+    "description": "List configured port-channels (LAGs) with their protocol and member ports. Source: 'show interfaces portchannel' over SSH.",
+    "category": "l2",
+    "transport": "ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {"type": "string", "description": "Management IP of the SONiC switch (required)."}
+      },
+      "required": ["switch_ip"]
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "portchannel", "lag", "l2", "tier2"]
+  },
+  {
+    "name": "get_platform_detail",
+    "description": "Combined platform health: summary + fans + temperatures + PSUs. Sources: 'show platform summary/fan/temperature/psustatus' over SSH. On SONiC VS, hardware sensors are absent; the tool reports that explicitly.",
+    "category": "system",
+    "transport": "ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {"type": "string", "description": "Management IP of the SONiC switch (required)."}
+      },
+      "required": ["switch_ip"]
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "platform", "hardware", "sensors", "tier2"]
+  },
+  {
+    "name": "get_sflow_status",
+    "description": "Retrieve sFlow sampling configuration and status: global enabled flag, sample size, polling interval, collectors, and per-interface sampling. Source: RESTCONF openconfig-sampling-sflow.",
+    "category": "sampling",
+    "transport": "restconf",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {"type": "string", "description": "Management IP of the SONiC switch (required)."}
+      },
+      "required": ["switch_ip"]
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "sflow", "sampling", "telemetry", "openconfig", "tier2"]
+  },
+  {
+    "name": "get_system_info",
+    "description": "Retrieve SONiC build, kernel, platform, HwSKU, ASIC, serial, and uptime details via 'show version' over SSH.",
+    "category": "system",
+    "transport": "ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {"type": "string", "description": "Management IP of the SONiC switch (required)."}
+      },
+      "required": ["switch_ip"]
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "system", "tier2"]
+  },
+  {
+    "name": "get_system_info_all",
+    "description": "Parallel multi-device variant of get_system_info. Invokes get_system_info against every inventory device (or the provided list) in parallel and returns a merged envelope with per-switch results and ok/error counts.",
+    "category": "system",
+    "transport": "ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ips": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Optional list of management IPs to target. When omitted, fans out to every device in the server's inventory."
+        }
+      },
+      "required": []
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "system", "multi-device", "fanout", "tier2"]
+  },
+  {
+    "name": "get_interfaces_all",
+    "description": "Parallel multi-device variant of get_interfaces. Fans out get_interfaces across every inventory device (or the provided list) in parallel, returning a merged envelope with per-switch results and ok/error counts.",
+    "category": "interfaces",
+    "transport": "restconf",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ips": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Optional list of management IPs to target. When omitted, fans out to every device in the server's inventory."
+        },
+        "name": {
+          "type": "string",
+          "description": "Optional interface name filter (applied on each switch, exact match)."
+        }
+      },
+      "required": []
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "interfaces", "multi-device", "fanout", "tier2"]
+  },
+  {
+    "name": "get_bgp_summary_all",
+    "description": "Parallel multi-device variant of get_bgp_summary. Fabric-wide BGP peer state — which switches have sessions Established, how many peers, routes exchanged — all from one call.",
+    "category": "routing",
+    "transport": "ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ips": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Optional list of management IPs. Defaults to every inventory device."
+        },
+        "vrf": {
+          "type": "string",
+          "description": "Optional VRF name (applied on each switch)."
+        },
+        "include_ipv6": {
+          "type": "boolean",
+          "description": "Include IPv6 peer summary. Defaults to true."
+        }
+      },
+      "required": []
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "routing", "bgp", "multi-device", "fanout", "tier2"]
+  },
+  {
+    "name": "get_routes_all",
+    "description": "Parallel multi-device variant of get_routes. IPv4 routing tables from every switch in one call — useful for 'who reaches what' diagnosis.",
+    "category": "routing",
+    "transport": "ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ips": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Optional list of management IPs. Defaults to every inventory device."
+        },
+        "vrf": {
+          "type": "string",
+          "description": "Optional VRF name."
+        }
+      },
+      "required": []
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "routing", "ipv4", "multi-device", "fanout", "tier2"]
+  },
+  {
+    "name": "get_lldp_neighbors_all",
+    "description": "Parallel multi-device variant of get_lldp_neighbors. Fabric-wide LLDP topology — on real hardware, this is the 'who is connected to whom' view. On SONiC VS, every switch will show RX=0 (documented limitation).",
+    "category": "lldp",
+    "transport": "restconf+ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ips": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Optional list of management IPs. Defaults to every inventory device."
+        }
+      },
+      "required": []
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "lldp", "topology", "multi-device", "fanout", "tier2"]
+  },
+  {
+    "name": "get_vlans_all",
+    "description": "Parallel multi-device variant of get_vlans. VLAN configuration across every switch — useful for L2 consistency checks.",
+    "category": "l2",
+    "transport": "ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ips": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Optional list of management IPs. Defaults to every inventory device."
+        }
+      },
+      "required": []
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "vlan", "l2", "multi-device", "fanout", "tier2"]
+  },
+  {
+    "name": "set_interface_admin_status",
+    "description": "Bring a single interface administratively up or down on a SONiC switch. Reads pre-state via RESTCONF, runs 'sudo config interface startup|shutdown <iface>' via SSH, waits for SWSS to reprogram, then reads post-state. Mutation is recorded in the server-side mutation ledger.",
+    "category": "interfaces",
+    "transport": "restconf+ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {
+          "type": "string",
+          "description": "Management IP of the SONiC switch (required)."
+        },
+        "interface": {
+          "type": "string",
+          "description": "Interface name matching ^Ethernet\\d+$ (e.g. 'Ethernet12')."
+        },
+        "admin_status": {
+          "type": "string",
+          "enum": ["up", "down"],
+          "description": "Target admin status."
+        }
+      },
+      "required": ["switch_ip", "interface", "admin_status"]
+    },
+    "policy": {
+      "risk": "MUTATION",
+      "allowed_in_auto_mode": false,
+      "requires_confirmation": true
+    },
+    "tags": ["mutation", "interface", "admin", "tier2"]
+  },
+  {
+    "name": "set_interface_mtu",
+    "description": "Change the MTU (bytes) of a single interface on a SONiC switch. Reads pre-state via RESTCONF, runs 'sudo config interface mtu <iface> <mtu>' over SSH, waits for SWSS to reprogram, then reads post-state. MTU range 68..9216. Mutation recorded in the ledger.",
+    "category": "interfaces",
+    "transport": "restconf+ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {"type": "string", "description": "Management IP of the SONiC switch (required)."},
+        "interface": {"type": "string", "description": "Interface name matching ^Ethernet\\d+$ (e.g. 'Ethernet12')."},
+        "mtu": {"type": "integer", "description": "New MTU in bytes. Range 68..9216.", "minimum": 68, "maximum": 9216}
+      },
+      "required": ["switch_ip", "interface", "mtu"]
+    },
+    "policy": {"risk": "MUTATION", "allowed_in_auto_mode": false, "requires_confirmation": true},
+    "tags": ["mutation", "interface", "mtu", "tier2"]
+  },
+  {
+    "name": "set_interface_description",
+    "description": "Set (or clear) the description/alias on a single SONiC interface. Cosmetic only — no forwarding or control-plane impact. Writes directly to CONFIG_DB via sonic-db-cli because SONiC master removed 'config interface description' from the CLI. Input is strictly sanitised (alphanumerics + safe punctuation only, no quotes/backslashes).",
+    "category": "interfaces",
+    "transport": "ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {"type": "string", "description": "Management IP of the SONiC switch (required)."},
+        "interface": {"type": "string", "description": "Interface name matching ^Ethernet\\d+$."},
+        "description": {"type": "string", "description": "New description (<= 256 chars, safe punctuation only). Pass an empty string to clear."}
+      },
+      "required": ["switch_ip", "interface", "description"]
+    },
+    "policy": {"risk": "MUTATION", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["mutation", "interface", "cosmetic", "tier2"]
+  },
+  {
+    "name": "clear_interface_counters",
+    "description": "Reset interface traffic counters (in/out pkts, errors, discards) via 'sonic-clear counters' over SSH. Resets every Ethernet interface at once on this SONiC build — no per-interface argument is supported. Zero impact on forwarding; common troubleshooting step.",
+    "category": "interfaces",
+    "transport": "ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {"type": "string", "description": "Management IP of the SONiC switch (required)."}
+      },
+      "required": ["switch_ip"]
+    },
+    "policy": {"risk": "MUTATION", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["mutation", "interface", "counters", "troubleshoot", "tier2"]
+  },
+  {
+    "name": "add_vlan",
+    "description": "Create a VLAN (1..4094) on a SONiC switch via 'sudo config vlan add <vid>'. Pre/post existence is verified via sonic-db-cli against CONFIG_DB. Mutation is recorded in the ledger.",
+    "category": "l2",
+    "transport": "ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {"type": "string", "description": "Management IP of the SONiC switch (required)."},
+        "vlan_id": {"type": "integer", "description": "VLAN ID, 1..4094.", "minimum": 1, "maximum": 4094}
+      },
+      "required": ["switch_ip", "vlan_id"]
+    },
+    "policy": {"risk": "MUTATION", "allowed_in_auto_mode": false, "requires_confirmation": true},
+    "tags": ["mutation", "vlan", "l2", "tier2"]
+  },
+  {
+    "name": "remove_vlan",
+    "description": "Delete a VLAN on a SONiC switch via 'sudo config vlan del <vid>'. SONiC refuses to remove a VLAN that still has attached L3 interfaces or members — the tool surfaces that as an error rather than forcing.",
+    "category": "l2",
+    "transport": "ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {"type": "string", "description": "Management IP of the SONiC switch (required)."},
+        "vlan_id": {"type": "integer", "description": "VLAN ID, 1..4094.", "minimum": 1, "maximum": 4094}
+      },
+      "required": ["switch_ip", "vlan_id"]
+    },
+    "policy": {"risk": "MUTATION", "allowed_in_auto_mode": false, "requires_confirmation": true},
+    "tags": ["mutation", "vlan", "l2", "tier2"]
+  },
+  {
+    "name": "config_save",
+    "description": "Persist the current SONiC CONFIG_DB to /etc/sonic/config_db.json via 'sudo config save -y'. Safe — no network impact — but classified MUTATION because it changes on-disk state. Use this after any config change to make it survive reboot.",
+    "category": "system",
+    "transport": "ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {
+          "type": "string",
+          "description": "Management IP of the SONiC switch (required)."
+        }
+      },
+      "required": ["switch_ip"]
+    },
+    "policy": {
+      "risk": "MUTATION",
+      "allowed_in_auto_mode": true,
+      "requires_confirmation": false
+    },
+    "tags": ["mutation", "persistence", "tier2"]
+  },
+  {
+    "name": "get_mutation_history",
+    "description": "Return recent entries from the server-side mutation ledger. Read-only view of every MUTATION or DESTRUCTIVE tool invocation: timestamp, tool, switch, inputs (with secrets redacted), pre/post state, status.",
+    "category": "system",
+    "transport": "local",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "description": "How many most-recent entries to return. 1..500. Default 50.",
+          "minimum": 1,
+          "maximum": 500
+        },
+        "switch_ip": {
+          "type": "string",
+          "description": "Optional: filter to entries against this switch."
+        },
+        "tool": {
+          "type": "string",
+          "description": "Optional: filter to entries for this tool name."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["ok", "failed"],
+          "description": "Optional: filter by outcome."
+        }
+      },
+      "required": []
+    },
+    "policy": {
+      "risk": "SAFE_READ",
+      "allowed_in_auto_mode": true,
+      "requires_confirmation": false
+    },
+    "tags": ["read", "audit", "mutation-ledger", "tier2"]
+  },
+  {
+    "name": "run_show_command",
+    "description": "Safe escape hatch — run an arbitrary SONiC 'show …' command via SSH. Strictly validated: must start with 'show ', only alphanumerics and a small set of safe punctuation allowed, no shell metacharacters, no quotes, 256-char limit. Prefer dedicated tools when available.",
+    "category": "system",
+    "transport": "ssh",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "switch_ip": {"type": "string", "description": "Management IP of the SONiC switch (required)."},
+        "command": {"type": "string", "description": "SONiC show command, e.g. 'show platform summary' or 'show vlan brief'."},
+        "timeout_seconds": {"type": "integer", "description": "Per-call SSH timeout. Default 20, max 120.", "minimum": 1, "maximum": 120}
+      },
+      "required": ["switch_ip", "command"]
+    },
+    "policy": {"risk": "SAFE_READ", "allowed_in_auto_mode": true, "requires_confirmation": false},
+    "tags": ["read", "system", "escape-hatch", "tier2"]
+  }
+]

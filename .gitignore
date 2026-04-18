@@ -1,0 +1,54 @@
+__pycache__/
+*.pyc
+.env
+.env.*
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+
+
+# Archives / scratch
+archive/
+*.zip
+
+# Secrets
+.env
+*.sh
+
+# OS junk
+.DS_Store
+
+# Archives / legacy
+archive/
+xco-mcp-archive/
+
+# Generated artifacts
+*.zip
+
+# Python noise
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtualenv
+.venv/
+venv/
+
+# Test tools
+test*
+xco_get_token.py
+mcp-server.log
+
+# Runtime logs (keep folder structure, ignore actual log files)
+logs/*
+!logs/.gitkeep
+
+# Smoketest results
+smoke-test/*.json
+smoke-test/*.txt

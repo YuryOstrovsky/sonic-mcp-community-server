@@ -1,0 +1,54 @@
+# Git
+.git/
+.gitignore
+
+# Environment (user provides their own)
+.env
+
+# Dev/build utilities
+xco_get_token.py
+push.sh
+
+# Smoke tests
+smoke-test/
+
+# Build-time tool generators (not needed at runtime)
+tools/apply_gateway_rules.py
+tools/classify_endpoints.py
+tools/generate_mcp_tools.py
+tools/parse_openapi.py
+tools/probe_read_endpoints.py
+tools/resolve_endpoints.py
+tools/validate_context_samples.py
+tools/validate_endpoints.py
+
+# Source OpenAPI specs (only the generated server spec is needed)
+openapi/openapi-specs/
+
+# Intermediate generated artifacts (only mcp_tools.json, mcp_capabilities.json, services.json needed)
+generated/*.bak
+generated/endpoints.json
+generated/final_endpoints.json
+generated/resolved_endpoints.json
+generated/validated_endpoints.json
+
+# Runtime logs (container should write to stdout)
+logs/
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Repo README (Docker has its own)
+README.md
+
+# Claude / AI assistant
+.claude/
+CLAUDE.md

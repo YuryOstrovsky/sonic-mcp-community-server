@@ -1,0 +1,31 @@
+[Unit]
+Description=SONiC MCP Community Server
+# Documentation=  # (set when the GitHub repo is published)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=user01
+Group=user01
+WorkingDirectory=/home/user01/sonic-mcp-community-server
+EnvironmentFile=-/home/user01/sonic-mcp-community-server/.env
+ExecStart=/home/user01/sonic-mcp-community-server/.venv/bin/python /home/user01/sonic-mcp-community-server/api/run.py
+Restart=on-failure
+RestartSec=3
+# Give it room for longer SSH probes during /ready
+TimeoutStartSec=30
+TimeoutStopSec=15
+KillSignal=SIGINT
+# Basic hardening — safe defaults for a lab service
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/user01/sonic-mcp-community-server/logs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sonic-mcp
+
+[Install]
+WantedBy=multi-user.target
