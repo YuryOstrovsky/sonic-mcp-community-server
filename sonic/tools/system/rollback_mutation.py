@@ -28,7 +28,7 @@ in the ledger so it can in turn be rolled back (within reason).
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from mcp_runtime.mutation_ledger import LEDGER
 

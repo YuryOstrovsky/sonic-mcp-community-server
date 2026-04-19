@@ -6,7 +6,6 @@ loading completes cleanly and every catalogued tool has a callable.
 
 from __future__ import annotations
 
-import os
 
 from mcp_runtime.registry import MCPRegistry
 

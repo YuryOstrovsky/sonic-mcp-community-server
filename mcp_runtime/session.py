@@ -1,6 +1,6 @@
 # mcp_runtime/session.py
 
-from typing import Dict, Optional
+from typing import Dict
 from copy import deepcopy
 from mcp_runtime.tracing import new_correlation_id
 

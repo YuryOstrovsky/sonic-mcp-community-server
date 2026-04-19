@@ -63,7 +63,9 @@ def _parse(stdout: str) -> Dict[str, Any]:
     rtt_max: Optional[float] = None
     m = _LOSS_RE.search(stdout)
     if m:
-        tx = int(m.group(1)); rx = int(m.group(2)); loss = float(m.group(3))
+        tx = int(m.group(1))
+        rx = int(m.group(2))
+        loss = float(m.group(3))
     m2 = _RTT_RE.search(stdout)
     if m2:
         rtt_min = float(m2.group(1))

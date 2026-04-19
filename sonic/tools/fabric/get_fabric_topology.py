@@ -32,7 +32,7 @@ under `unmatched_peers` so the client can show them.
 from __future__ import annotations
 
 import ipaddress
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from sonic.tools._fanout import fan_out
 from sonic.tools.interfaces.get_ip_interfaces import get_ip_interfaces

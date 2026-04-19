@@ -1,14 +1,13 @@
 # mcp_runtime/planner.py
 
 from typing import Dict, List, Optional
-from mcp_runtime.workflow_schema import validate_workflow_schema, WorkflowSchemaError
+from mcp_runtime.workflow_schema import validate_workflow_schema
 from mcp_runtime.intent_normalizer import (
     IntentNormalizer,
     IntentNormalizationError,
 )
 from mcp_runtime.tool_capabilities import (
     ToolCapabilityResolver,
-    ToolCapabilityError,
 )
 
 

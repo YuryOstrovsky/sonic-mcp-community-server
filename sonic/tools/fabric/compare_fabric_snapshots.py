@@ -73,11 +73,11 @@ def _diff_one(
     right_only = sorted(set(right.keys()) - set(left.keys()))
     differing: List[Dict[str, Any]] = []
     for k in sorted(set(left.keys()) & set(right.keys())):
-        l, r = left[k], right[k]
-        all_fields = sorted(set(l.keys()) | set(r.keys()))
+        lv, rv = left[k], right[k]
+        all_fields = sorted(set(lv.keys()) | set(rv.keys()))
         field_diffs = [
-            {"field": f, "left": l.get(f), "right": r.get(f)}
-            for f in all_fields if l.get(f) != r.get(f)
+            {"field": f, "left": lv.get(f), "right": rv.get(f)}
+            for f in all_fields if lv.get(f) != rv.get(f)
         ]
         if field_diffs:
             differing.append({"key": k, "fields": field_diffs})
@@ -134,9 +134,9 @@ def compare_fabric_snapshots(
         per_table = []
         switch_total = 0
         for t in tables:
-            l = _extract_table(left_cfg, t)
-            r = _extract_table(right_cfg, t)
-            l_only, r_only, diffs = _diff_one(l, r)
+            lv = _extract_table(left_cfg, t)
+            rv = _extract_table(right_cfg, t)
+            l_only, r_only, diffs = _diff_one(lv, rv)
             n = len(l_only) + len(r_only) + len(diffs)
             switch_total += n
             per_table.append({
@@ -144,8 +144,8 @@ def compare_fabric_snapshots(
                 "left_only": l_only,
                 "right_only": r_only,
                 "differing": diffs,
-                "left_count": len(l),
-                "right_count": len(r),
+                "left_count": len(lv),
+                "right_count": len(rv),
             })
         if switch_total:
             switches_differ += 1

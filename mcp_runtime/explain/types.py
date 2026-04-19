@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional, TypedDict
+from typing import List, Optional, TypedDict
 
 
 class ExplanationSummary(TypedDict):

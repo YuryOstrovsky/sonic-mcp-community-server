@@ -1,6 +1,6 @@
 # mcp_runtime/tool_capabilities.py
 
-from typing import Dict, Optional, List
+from typing import Optional, List
 
 
 class ToolCapabilityError(Exception):

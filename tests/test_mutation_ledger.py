@@ -96,8 +96,10 @@ class TestConcurrentWrites:
             )
 
         threads = [threading.Thread(target=worker, args=(i,)) for i in range(20)]
-        for t in threads: t.start()
-        for t in threads: t.join()
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
 
         lines = ledger_path.read_text().splitlines()
         assert len(lines) == 20

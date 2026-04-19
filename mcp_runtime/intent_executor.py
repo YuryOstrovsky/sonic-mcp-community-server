@@ -3,7 +3,7 @@
 from mcp_runtime.planner import MCPPlanner, PlannerError
 from mcp_runtime.workflow import MCPWorkflowRunner
 from mcp_runtime.agents.observer import ObserverAgent
-from mcp_runtime.safety.envelope import SafetyEnvelope, SafetyEnvelopeError
+from mcp_runtime.safety.envelope import SafetyEnvelope
 from mcp_runtime.commit_registry import CommitRegistry
 
 

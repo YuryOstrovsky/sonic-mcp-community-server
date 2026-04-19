@@ -84,14 +84,14 @@ def _diff_one(
     right_only = sorted(set(right.keys()) - set(left.keys()))
     differing: List[Dict[str, Any]] = []
     for k in sorted(set(left.keys()) & set(right.keys())):
-        l = left[k]
-        r = right[k]
+        lv = left[k]
+        rv = right[k]
         # Collapse field-level diffs
-        all_fields = sorted(set(l.keys()) | set(r.keys()))
+        all_fields = sorted(set(lv.keys()) | set(rv.keys()))
         field_diffs = [
-            {"field": f, "left": l.get(f), "right": r.get(f)}
+            {"field": f, "left": lv.get(f), "right": rv.get(f)}
             for f in all_fields
-            if l.get(f) != r.get(f)
+            if lv.get(f) != rv.get(f)
         ]
         if field_diffs:
             differing.append({"key": k, "fields": field_diffs})
@@ -120,16 +120,16 @@ def get_fabric_config_diff(
     tables_differ = 0
 
     for t in tables:
-        l = _dump_table(transport, left, t)
-        r = _dump_table(transport, right, t)
-        l_only, r_only, diffs = _diff_one(l, r)
+        lv = _dump_table(transport, left, t)
+        rv = _dump_table(transport, right, t)
+        l_only, r_only, diffs = _diff_one(lv, rv)
         entry = {
             "name": t,
             "left_only": l_only,
             "right_only": r_only,
             "differing": diffs,
-            "left_count": len(l),
-            "right_count": len(r),
+            "left_count": len(lv),
+            "right_count": len(rv),
         }
         per_table.append(entry)
         t_diffs = len(l_only) + len(r_only) + len(diffs)

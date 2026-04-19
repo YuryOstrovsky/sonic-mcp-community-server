@@ -1,0 +1,20 @@
+# Ruff configuration.
+#
+# We use ruff mostly as a safety net for unused imports, ambiguous
+# names, and accidental semicolons — not as a formatter. The two
+# relaxations below are deliberate:
+#
+# - E402 (module-level import not at top) is legitimate in FastAPI
+#   apps where decorators mount on an `app` object that has to be
+#   constructed before the routes import, and in api/run.py where
+#   load_dotenv() has to run before uvicorn imports.
+# - E501 (line too long) is noisy on log messages and markdown and
+#   not worth chasing.
+
+line-length = 120
+
+[lint]
+ignore = [
+    "E402",
+    "E501",
+]

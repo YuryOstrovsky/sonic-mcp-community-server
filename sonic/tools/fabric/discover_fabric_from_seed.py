@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import ipaddress
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 from sonic.tools._common import require_switch_ip
 from sonic.tools.lldp.get_lldp_neighbors import get_lldp_neighbors
