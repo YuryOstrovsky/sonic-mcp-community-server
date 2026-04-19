@@ -4,7 +4,7 @@ A **Model Context Protocol (MCP)** server for **SONiC** switches. Exposes
 a tool catalog and invocation API that any AI agent — or plain HTTP
 client — can use to inspect and safely change a SONiC fabric.
 
-- **53 tools** across reads, mutations, and fabric-level diagnostics
+- **55 tools** across reads, mutations, and fabric-level diagnostics
 - **Three transports** — RESTCONF, SSH, and `vtysh` (FRR) — each handler
   declares what it uses
 - **Policy tiers** — `SAFE_READ` / `MUTATION` / `DESTRUCTIVE`, gated
@@ -14,6 +14,8 @@ client — can use to inspect and safely change a SONiC fabric.
   state; `rollback_mutation` replays it in reverse
 - **Plugin-style tool discovery** — drop a Python file under
   `sonic/tools/<category>/` and the registry picks it up on boot
+- **File-backed inventory** with hot-reload, REST API, per-device
+  credential overrides, and LLDP seed-walk discovery
 - **Companion web client** with a fabric view, AI console, and live
   intent editor —
   [sonic-mcp-community-client](https://github.com/YuryOstrovsky/sonic-mcp-community-client)
@@ -75,7 +77,7 @@ git clone https://github.com/YuryOstrovsky/sonic-mcp-community-server
 cd sonic-mcp-community-server
 cp .env.example .env        # fill in SONIC_DEFAULT_USERNAME / PASSWORD
 docker compose up -d --build
-curl http://localhost:8000/tools | jq 'length'   # → 53
+curl http://localhost:8000/tools | jq 'length'   # → 55
 ```
 
 The shipped `docker-compose.yml` references
@@ -114,7 +116,8 @@ All settings are `.env` / environment variables. The most useful ones:
 | Variable | Default | Purpose |
 |---|---|---|
 | `SONIC_DEFAULT_USERNAME` / `SONIC_DEFAULT_PASSWORD` | — | Credentials applied to all devices unless overridden per-host |
-| `SONIC_HOST_<IP with dots as underscores>_USERNAME` / `_PASSWORD` | — | Per-host credential overrides |
+| `SONIC_HOST_<IP with dots as underscores>_USERNAME` / `_PASSWORD` | — | Per-host credential overrides via env |
+| `SONIC_INVENTORY_PATH` | `config/inventory.json` | File-backed inventory (see Inventory below) |
 | `MCP_MUTATIONS_ENABLED` | `1` | Server-wide kill switch — set `0` to refuse every MUTATION/DESTRUCTIVE tool |
 | `SONIC_VERIFY_TLS` | `false` | RESTCONF TLS verify (lab VMs use self-signed) |
 | `SONIC_RESTCONF_PORT` | `443` | mgmt-framework port |
@@ -127,16 +130,54 @@ All settings are `.env` / environment variables. The most useful ones:
 
 ## Inventory
 
-Static Python inventory at `sonic/inventory.py`. Default:
+Inventory is loaded from a JSON file at `$SONIC_INVENTORY_PATH` (default
+`config/inventory.json`). The server watches the file's mtime and
+hot-reloads on change — no restart needed.
 
-```python
-SonicDevice(name="vm1", mgmt_ip="10.46.11.50", tags=("lab", "vm", "sonic-vs")),
-SonicDevice(name="vm2", mgmt_ip="10.46.11.51", tags=("lab", "vm", "sonic-vs")),
+```json
+{
+  "switches": [
+    {
+      "name": "vm1",
+      "mgmt_ip": "10.46.11.50",
+      "tags": ["lab", "vm", "sonic-vs"]
+    },
+    {
+      "name": "spine1",
+      "mgmt_ip": "10.0.0.1",
+      "tags": ["spine"],
+      "username": "admin2",
+      "password": "per-switch-secret"
+    }
+  ]
+}
 ```
 
-Edit this list to point at your own lab. Anything not in the list can
-still be invoked by raw IP — the `resolve()` helper produces an ad-hoc
-device on the fly.
+If the file is missing, malformed, or transiently empty, the server
+keeps its last good list (or falls back to a built-in `vm1`/`vm2`
+starter). A starter template ships at `config/inventory.example.json`.
+
+**Per-device credentials** — `username` / `password` on a switch entry
+take precedence over every env var. Precedence chain (highest first):
+
+1. Inventory JSON entry
+2. `SONIC_HOST_<IP_with_underscores>_USERNAME` / `_PASSWORD`
+3. `SONIC_DEFAULT_USERNAME` / `SONIC_DEFAULT_PASSWORD`
+
+**REST API** (see below) lets the companion client or curl add / remove
+/ probe switches without ever touching the JSON by hand. Anything not
+in the inventory can still be invoked by raw IP — the `resolve()` helper
+produces an ad-hoc device on the fly.
+
+**Discovery** — the `discover_fabric_from_seed` tool walks LLDP
+neighbors from a seed switch (up to `max_hops`, default 2) and proposes
+new additions, each optionally probed on RESTCONF + SSH before the user
+approves. The client's **Settings → Fabric Inventory** view wraps the
+add / remove / probe / discover flows.
+
+> **Caveat:** LLDP RX on SONiC VS is often empty (documented upstream),
+> so seed-walk discovery legitimately finds nothing in the default
+> 2-VM lab. Real hardware is where this shines.
 
 ---
 
@@ -144,17 +185,22 @@ device on the fly.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /tools` | The full tool catalog — JSON array, 53 entries |
+| `GET /tools` | The full tool catalog — JSON array, 55 entries |
 | `POST /invoke` | Run a tool. Body: `{tool, inputs, confirm?}` |
 | `GET /ready` | Probes every inventory device on RESTCONF + SSH. 503 if nothing reachable. |
 | `GET /health` | Liveness — process is up |
 | `GET /metrics` | Prometheus scrape — see below |
 | `GET /fabric/intent` / `PUT /fabric/intent` | Read/write the fabric intent JSON used by `validate_fabric_vs_intent` |
+| `GET /inventory` | Current inventory as JSON — `{path, source, switches}`. Passwords redacted (only `has_password: bool` is exposed). |
+| `PUT /inventory` | Replace the full inventory. Body: `{switches: [...]}`. |
+| `POST /inventory/switches` | Add-or-update a single switch by `mgmt_ip`. |
+| `DELETE /inventory/switches/{mgmt_ip}` | Remove a switch. |
+| `POST /inventory/probe` | Transient RESTCONF + SSH probe with supplied creds (does not persist). |
 | `POST /audit/mutations` | Mutation ledger search (also exposed as the `get_mutation_history` tool) |
 
 ---
 
-## Tool catalog (53 tools)
+## Tool catalog (55 tools)
 
 Grouped by category. Every tool's full spec — input schema, policy,
 transport — is served as JSON at `GET /tools`.
@@ -186,7 +232,7 @@ transport — is served as JSON at `GET /tools`.
 `get_fabric_topology` · `get_fabric_health` · `get_fabric_reachability_matrix`
 · `get_fabric_mtu_consistency` · `get_fabric_bandwidth` · `get_fabric_config_diff`
 · `validate_fabric_vs_intent` · `ping_between` · `traceroute_between`
-· `iperf_between` · `detect_routing_loop`
+· `iperf_between` · `detect_routing_loop` · `discover_fabric_from_seed`
 
 ### Mutations — interfaces
 
@@ -243,7 +289,7 @@ drain/undrain. Refuses `config_save` and `clear_interface_counters`
 | `mcp_invoke_success_total` / `_failure_total` | `tool` | Outcome split |
 | `mcp_invoke_latency_seconds` | `tool` | Histogram (50ms → 10s buckets) |
 | `mcp_invoke_status_total` | `tool`, `status` | Count by HTTP status |
-| `mcp_tools_total` | — | Registered tool count (53) |
+| `mcp_tools_total` | — | Registered tool count (55) |
 | `mcp_tools_by_risk` | `risk` | Count per risk tier |
 | `mcp_inventory_devices_total` | — | Switches in inventory |
 | `mcp_ledger_entries_total` | — | Mutation ledger depth |

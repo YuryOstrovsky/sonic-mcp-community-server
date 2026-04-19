@@ -18,15 +18,28 @@ and a `.env` file.
 cp .env.example .env
 # Edit .env and set at minimum:
 #   SONIC_DEFAULT_USERNAME=admin
-#   SONIC_DEFAULT_PASSWORD=your-lab-password
-#   MCP_MUTATIONS_ENABLED=1   (set to 0 for a read-only mirror)
+#   SONIC_DEFAULT_PASSWORD=YourPaSsWoRd   # the SONiC factory default
+#   MCP_MUTATIONS_ENABLED=1               # set 0 for a read-only mirror
 ```
+
+Optional — create an inventory file so the server talks to your lab
+instead of the built-in `vm1`/`vm2` starter. A template ships as
+`config/inventory.example.json`; copy it and edit:
+
+```bash
+mkdir -p config
+cp config/inventory.example.json config/inventory.json
+$EDITOR config/inventory.json
+```
+
+The server watches this file's mtime and **hot-reloads on change** — no
+container restart needed. Per-switch `username` / `password` in the JSON
+override the default `SONIC_DEFAULT_*` env vars.
 
 Optional — create a fabric intent file so `validate_fabric_vs_intent`
 has something to compare against:
 
 ```bash
-mkdir -p config
 cat > config/fabric_intent.json <<'JSON'
 {
   "switches": {
@@ -63,11 +76,11 @@ curl -s -X POST http://localhost:8000/invoke \
 
 ## 4. What lives where
 
-| Host path           | Container path      | Purpose                                  | Mode |
-|---------------------|---------------------|------------------------------------------|------|
-| `./.env`            | (loaded as env)     | Credentials, kill switches, tunables     | –    |
-| `./config/`         | `/app/config`       | Intent file(s) — `fabric_intent.json`    | ro   |
-| `./logs/`           | `/app/logs`         | Mutation ledger (`mutations.jsonl`)      | rw   |
+| Host path           | Container path      | Purpose                                                    | Mode |
+|---------------------|---------------------|------------------------------------------------------------|------|
+| `./.env`            | (loaded as env)     | Credentials, kill switches, tunables                       | –    |
+| `./config/`         | `/app/config`       | `inventory.json` + `fabric_intent.json` (both hot-reloaded) | rw   |
+| `./logs/`           | `/app/logs`         | Mutation ledger (`mutations.jsonl`)                        | rw   |
 
 **Everything else is immutable in the image.** To upgrade, pull/rebuild;
 state survives because it's on the host.

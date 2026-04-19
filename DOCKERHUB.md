@@ -1,9 +1,9 @@
 # SONiC MCP Community Server
 
 A **Model Context Protocol (MCP)** server for **SONiC** switches. Exposes
-53 tools — reads, mutations, and fabric-level diagnostics — that any AI
-agent or plain HTTP client can use to inspect and safely change a SONiC
-fabric.
+55 tools — reads, mutations, fabric-level diagnostics, and LLDP-based
+inventory discovery — that any AI agent or plain HTTP client can use to
+inspect and safely change a SONiC fabric.
 
 Pair with [`extremecanada/sonic-mcp-community-client`](https://hub.docker.com/r/extremecanada/sonic-mcp-community-client) for the web UI.
 
@@ -17,14 +17,14 @@ docker pull extremecanada/sonic-mcp-community-server:latest
 docker run -d --name sonic-mcp \
   -p 8000:8000 \
   -e SONIC_DEFAULT_USERNAME=admin \
-  -e SONIC_DEFAULT_PASSWORD=YourSwitchPassword \
+  -e SONIC_DEFAULT_PASSWORD=YourPaSsWoRd \
   -e MCP_MUTATIONS_ENABLED=1 \
-  -v $(pwd)/config:/app/config:ro \
+  -v $(pwd)/config:/app/config \
   -v $(pwd)/logs:/app/logs \
   -v $(pwd)/snapshots:/app/snapshots \
   extremecanada/sonic-mcp-community-server:latest
 
-curl http://localhost:8000/tools | jq 'length'   # → 53
+curl http://localhost:8000/tools | jq 'length'   # → 55
 ```
 
 That's it. Point it at any SONiC switch reachable from the container
@@ -43,10 +43,11 @@ services:
     ports: ["8000:8000"]
     env_file: .env
     volumes:
-      - ./config:/app/config:ro       # intent files (validate_fabric_vs_intent)
+      - ./config:/app/config          # inventory.json + fabric_intent.json (hot-reloaded)
       - ./logs:/app/logs              # mutation ledger (JSONL)
       - ./snapshots:/app/snapshots    # saved config_db.json dumps
     environment:
+      - SONIC_INVENTORY_PATH=/app/config/inventory.json
       - SONIC_FABRIC_INTENT_PATH=/app/config/fabric_intent.json
 ```
 
@@ -54,7 +55,7 @@ Create `.env` alongside:
 
 ```env
 SONIC_DEFAULT_USERNAME=admin
-SONIC_DEFAULT_PASSWORD=YourSwitchPassword
+SONIC_DEFAULT_PASSWORD=YourPaSsWoRd
 MCP_MUTATIONS_ENABLED=1
 SONIC_VERIFY_TLS=false
 ```
@@ -67,7 +68,8 @@ Then: `docker compose up -d`.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `SONIC_DEFAULT_USERNAME` / `_PASSWORD` | — | Credentials for all switches (override per-host with `SONIC_HOST_<IP_with_underscores>_USERNAME` / `_PASSWORD`) |
+| `SONIC_DEFAULT_USERNAME` / `_PASSWORD` | `admin` / `YourPaSsWoRd` | SONiC factory defaults. Override per-host with `SONIC_HOST_<IP_with_underscores>_USERNAME` / `_PASSWORD` or in `inventory.json`. |
+| `SONIC_INVENTORY_PATH` | `config/inventory.json` | File-backed inventory. Hot-reloaded on mtime change. |
 | `MCP_MUTATIONS_ENABLED` | `1` | Server-wide kill switch. `0` makes every MUTATION/DESTRUCTIVE tool return 403 |
 | `SONIC_VERIFY_TLS` | `false` | RESTCONF TLS verify (lab switches use self-signed) |
 | `SONIC_RESTCONF_PORT` | `443` | mgmt-framework HTTPS port |
@@ -82,7 +84,7 @@ Then: `docker compose up -d`.
 
 | Mount | Purpose | Mode |
 |---|---|---|
-| `/app/config` | Intent JSON(s) for `validate_fabric_vs_intent` | `ro` recommended |
+| `/app/config` | `inventory.json` + `fabric_intent.json` (both hot-reloaded; server can also write them via REST) | `rw` |
 | `/app/logs` | `mutations.jsonl` — the mutation audit trail | `rw` required |
 | `/app/snapshots` | `save_fabric_snapshot` / `restore_fabric_snapshot` output | `rw` required |
 
@@ -95,12 +97,15 @@ intent, and snapshot lives on the host.
 
 | Path | Purpose |
 |---|---|
-| `GET /tools` | Full tool catalog (JSON array, 53 entries) |
+| `GET /tools` | Full tool catalog (JSON array, 55 entries) |
 | `POST /invoke` | Run a tool. Body: `{tool, inputs, confirm?}` |
 | `GET /ready` | Probes every device on RESTCONF + SSH; 503 if nothing reachable |
 | `GET /health` | Liveness |
 | `GET /metrics` | Prometheus scrape (tool invocation + fabric health gauges) |
 | `GET /fabric/intent` / `PUT /fabric/intent` | Manage intent JSON |
+| `GET /inventory` · `PUT /inventory` | Read / replace the inventory (passwords redacted on read) |
+| `POST /inventory/switches` · `DELETE /inventory/switches/{ip}` | Add-or-update / remove a single switch |
+| `POST /inventory/probe` | Transient RESTCONF + SSH probe with supplied creds (does not persist) |
 
 ---
 

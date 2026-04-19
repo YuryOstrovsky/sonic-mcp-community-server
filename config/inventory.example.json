@@ -1,5 +1,5 @@
 {
-  "_comment": "Example SONiC MCP inventory. Copy to inventory.json and edit. Per-device username/password are optional; defaults fall back to SONIC_DEFAULT_USERNAME / _PASSWORD from .env, then to 'admin'/'password'.",
+  "_comment": "Example SONiC MCP inventory. Copy to inventory.json and edit. Per-device username/password are optional; defaults fall back to SONIC_DEFAULT_USERNAME / _PASSWORD from .env, then to the SONiC factory default 'admin' / 'YourPaSsWoRd'.",
   "switches": [
     {
       "name": "vm1",

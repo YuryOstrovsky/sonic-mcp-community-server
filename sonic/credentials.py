@@ -5,7 +5,7 @@ Resolution order for a given switch IP (first non-empty wins):
   1. Per-device override in inventory.json  (SonicDevice.username / .password)
   2. SONIC_HOST_<ip-with-dots-as-underscores>_USERNAME / _PASSWORD
   3. SONIC_DEFAULT_USERNAME / SONIC_DEFAULT_PASSWORD
-  4. Built-in lab defaults (admin / password)
+  4. Built-in SONiC factory defaults (admin / YourPaSsWoRd)
 
 The inventory-level override lets operators stamp out per-switch
 credentials in a single JSON file managed from the web client,
@@ -43,6 +43,6 @@ class SonicCredentials:
             inventory_password
             or os.environ.get(f"{key}_PASSWORD")
             or os.environ.get("SONIC_DEFAULT_PASSWORD")
-            or "password"
+            or "YourPaSsWoRd"
         )
         return cls(username=user, password=pw)
