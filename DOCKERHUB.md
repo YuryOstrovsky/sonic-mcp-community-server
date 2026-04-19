@@ -9,6 +9,36 @@ Pair with [`extremecanada/sonic-mcp-community-client`](https://hub.docker.com/r/
 
 ---
 
+## 📂 Before you pull — host directories
+
+The image runs as non-root user `mcp` (**uid 1000**). If a bind-mount
+source doesn't exist when the container starts, Docker creates it as
+`root` and the container user can't write to it. Symptoms: adding a
+switch via the UI returns 500, `mutations.jsonl` never appears, snapshot
+saves fail silently. Pre-create the dirs yourself so they land with
+sensible ownership:
+
+```bash
+mkdir -p config logs snapshots
+
+# Most dev machines already have uid 1000 as the first user — check:
+id -u                # if this prints 1000, you're done
+
+# If your uid is different, align ownership with the container user:
+sudo chown -R 1000:1000 config logs snapshots
+```
+
+| Host dir       | What lives there                                         |
+|----------------|----------------------------------------------------------|
+| `./config/`    | `inventory.json` + `fabric_intent.json` (live-editable)  |
+| `./logs/`      | `mutations.jsonl` — append-only mutation ledger          |
+| `./snapshots/` | `save_fabric_snapshot` / `restore_fabric_snapshot` output |
+
+`./config/` holds the operator's lab definition — back this up.
+`./logs/mutations.jsonl` is the audit trail — keep it on durable storage.
+
+---
+
 ## 🚀 Quick start
 
 ```bash
