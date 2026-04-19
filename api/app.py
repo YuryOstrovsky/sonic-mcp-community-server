@@ -345,8 +345,8 @@ _INTENT_DEFAULT_REL = _Path("config") / "fabric_intent.json"
 
 
 def _intent_path() -> _Path:
-    env = os.environ.get(_INTENT_ENV_VAR)
-    return _Path(env) if env else _INTENT_DEFAULT_REL
+    from sonic.inventory import _validated_config_path
+    return _validated_config_path(os.environ.get(_INTENT_ENV_VAR), _INTENT_DEFAULT_REL)
 
 
 @app.get("/fabric/intent")
@@ -444,6 +444,13 @@ def fabric_intent_put(body: _IntentPutBody):
 
 import concurrent.futures as _concurrent_futures
 from sonic.inventory import SonicDevice as _SonicDevice
+
+# /inventory/probe does a transient inventory swap on the shared
+# transport singletons. Serialising probes here keeps two concurrent
+# callers from seeing each other's credentials mid-swap. The probe is
+# short (~10s worst case) so a lock here is strictly simpler than
+# per-transport rework.
+_probe_lock = threading.Lock()
 
 
 class _InventoryDeviceBody(BaseModel):
@@ -556,39 +563,40 @@ def inventory_probe(body: _InventoryProbeBody):
         username=body.username or None,
         password=body.password or None,
     )])
-    # Swap inventory on the existing transports for the duration of
-    # the probe, then restore.
-    prev_rc, prev_ssh = mcp.transport.restconf.inventory, mcp.transport.ssh.inventory
-    mcp.transport.restconf.inventory = probe_inv
-    mcp.transport.ssh.inventory = probe_inv
-    # Also invalidate any cached session/client for this IP so the
-    # probe actually uses the supplied credentials.
-    mcp.transport.restconf._sessions.pop(ip, None)
-    try:
-        mcp.transport.ssh._clients.pop(ip, None)
-    except Exception:
-        pass
-    try:
-        with _concurrent_futures.ThreadPoolExecutor(max_workers=2) as ex:
-            rc_fut = ex.submit(mcp.transport.restconf.probe, ip)
-            ssh_fut = ex.submit(mcp.transport.ssh.probe, ip)
-            try:
-                status["restconf"] = bool(rc_fut.result(timeout=_READY_TIMEOUT))
-            except Exception as e:
-                status["errors"].append(f"restconf: {e}")
-            try:
-                status["ssh"] = bool(ssh_fut.result(timeout=_READY_TIMEOUT))
-            except Exception as e:
-                status["errors"].append(f"ssh: {e}")
-    finally:
-        # Always restore — don't let a probe silently rewire live state.
-        mcp.transport.restconf.inventory = prev_rc
-        mcp.transport.ssh.inventory = prev_ssh
+    # Serialise the transient transport-inventory swap so concurrent
+    # probes can't see each other's credentials.
+    with _probe_lock:
+        prev_rc, prev_ssh = mcp.transport.restconf.inventory, mcp.transport.ssh.inventory
+        mcp.transport.restconf.inventory = probe_inv
+        mcp.transport.ssh.inventory = probe_inv
+        # Also invalidate any cached session/client for this IP so the
+        # probe actually uses the supplied credentials.
         mcp.transport.restconf._sessions.pop(ip, None)
         try:
             mcp.transport.ssh._clients.pop(ip, None)
         except Exception:
             pass
+        try:
+            with _concurrent_futures.ThreadPoolExecutor(max_workers=2) as ex:
+                rc_fut = ex.submit(mcp.transport.restconf.probe, ip)
+                ssh_fut = ex.submit(mcp.transport.ssh.probe, ip)
+                try:
+                    status["restconf"] = bool(rc_fut.result(timeout=_READY_TIMEOUT))
+                except Exception as e:
+                    status["errors"].append(f"restconf: {e}")
+                try:
+                    status["ssh"] = bool(ssh_fut.result(timeout=_READY_TIMEOUT))
+                except Exception as e:
+                    status["errors"].append(f"ssh: {e}")
+        finally:
+            # Always restore — don't let a probe silently rewire live state.
+            mcp.transport.restconf.inventory = prev_rc
+            mcp.transport.ssh.inventory = prev_ssh
+            mcp.transport.restconf._sessions.pop(ip, None)
+            try:
+                mcp.transport.ssh._clients.pop(ip, None)
+            except Exception:
+                pass
     return status
 
 

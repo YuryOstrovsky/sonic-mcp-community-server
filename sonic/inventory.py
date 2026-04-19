@@ -47,6 +47,39 @@ _ENV_INVENTORY_PATH = "SONIC_INVENTORY_PATH"
 _DEFAULT_INVENTORY_PATH = Path("config") / "inventory.json"
 
 
+def _validated_config_path(raw: Optional[str], default: Path) -> Path:
+    """Accept an env-supplied path if it looks safe; otherwise fall back.
+
+    Rules (keep simple — this is a lab-grade sanity check, not a sandbox):
+
+    - Empty / missing → default
+    - Rejects anything containing `..` segments (path traversal attempt)
+    - Rejects anything that resolves to `/etc`, `/root`, `/proc`, `/sys`
+    - Absolute paths under `/app` or the CWD are allowed (Docker mount
+      target), plus anything relative to the CWD.
+
+    On rejection we log once and use the default so the server still
+    starts.
+    """
+    if not raw:
+        return default
+    candidate = Path(raw)
+    if ".." in candidate.parts:
+        logger.warning("ignoring config path %r: contains '..'; using %s", raw, default)
+        return default
+    try:
+        resolved = candidate.resolve()
+    except OSError:
+        logger.warning("ignoring config path %r: cannot resolve; using %s", raw, default)
+        return default
+    forbidden = ("/etc", "/root", "/proc", "/sys", "/boot")
+    resolved_str = str(resolved)
+    if any(resolved_str == f or resolved_str.startswith(f + "/") for f in forbidden):
+        logger.warning("ignoring config path %r: points at %s; using %s", raw, resolved_str, default)
+        return default
+    return candidate
+
+
 @dataclass(frozen=True)
 class SonicDevice:
     name: str
@@ -67,8 +100,7 @@ _HARDCODED_FALLBACK: List[SonicDevice] = [
 
 
 def _inventory_path() -> Path:
-    env = os.environ.get(_ENV_INVENTORY_PATH)
-    return Path(env) if env else _DEFAULT_INVENTORY_PATH
+    return _validated_config_path(os.environ.get(_ENV_INVENTORY_PATH), _DEFAULT_INVENTORY_PATH)
 
 
 def _parse_devices(raw: Dict) -> List[SonicDevice]:

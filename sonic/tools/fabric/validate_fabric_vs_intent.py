@@ -53,8 +53,8 @@ _DEFAULT_INTENT_RELATIVE = Path("config") / "fabric_intent.json"
 
 def _resolve_default_path() -> Path:
     """Precedence: explicit caller arg > env var > config/fabric_intent.json."""
-    env = os.environ.get(_ENV_INTENT_PATH)
-    return Path(env) if env else _DEFAULT_INTENT_RELATIVE
+    from sonic.inventory import _validated_config_path
+    return _validated_config_path(os.environ.get(_ENV_INTENT_PATH), _DEFAULT_INTENT_RELATIVE)
 
 
 def _load_intent(explicit: Optional[str]) -> Optional[Dict[str, Any]]:

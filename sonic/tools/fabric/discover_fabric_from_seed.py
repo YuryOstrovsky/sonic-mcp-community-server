@@ -79,8 +79,9 @@ def discover_fabric_from_seed(
     proposed: Dict[str, Dict[str, Any]] = {}
     already_known: List[Dict[str, Any]] = []
     unreachable: List[Dict[str, Any]] = []
+    hops_walked = 0
 
-    for hop in range(max_hops):
+    for _ in range(max_hops):
         next_frontier: List[str] = []
         for src in frontier:
             try:
@@ -106,6 +107,7 @@ def discover_fabric_from_seed(
                 else:
                     proposed[mgmt_ip] = entry
                     next_frontier.append(mgmt_ip)
+        hops_walked += 1
         frontier = next_frontier
         if not frontier:
             break
@@ -146,7 +148,7 @@ def discover_fabric_from_seed(
     return {
         "summary": {
             "seed": seed,
-            "hops_walked": min(max_hops, hop + 1 if 'hop' in locals() else 0),
+            "hops_walked": hops_walked,
             "candidates_found": len(proposed) + len(already_known),
             "proposed_additions_count": len(proposed_list),
             "known_count": len(already_known),
