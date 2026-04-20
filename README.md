@@ -329,9 +329,18 @@ image build & boot smoke on every PR.
 
 ---
 
-## Screenshot of the MCP client working with this MCP server 
+## Few Screenshots of the MCP client working with this MCP server 
 
 <img width="1712" height="865" alt="image" src="https://github.com/user-attachments/assets/418053fd-21d6-41ea-8e23-5b1f7df1fe9e" />
+
+<img width="1723" height="878" alt="image" src="https://github.com/user-attachments/assets/92184616-1bb7-4fc2-8418-23074f6cd481" />
+
+<img width="1724" height="875" alt="image" src="https://github.com/user-attachments/assets/9a0da236-8865-47b8-9e12-2f0fa7086eae" />
+
+<img width="1723" height="878" alt="image" src="https://github.com/user-attachments/assets/7a4a7d73-6090-4d63-a0c5-67cf4b66f3fd" />
+
+
+
 
 
 ## License
