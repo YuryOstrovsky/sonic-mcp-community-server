@@ -329,6 +329,11 @@ image build & boot smoke on every PR.
 
 ---
 
+## Screenshot of the MCP client working with this MCP server 
+
+<img width="1712" height="865" alt="image" src="https://github.com/user-attachments/assets/418053fd-21d6-41ea-8e23-5b1f7df1fe9e" />
+
+
 ## License
 
 Apache-2.0. See [`LICENSE`](./LICENSE) when present.
