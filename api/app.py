@@ -85,8 +85,13 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "X-MCP-Session"],
+    # PUT/DELETE are needed for the inventory write endpoints; OPTIONS is the
+    # CORS preflight.
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    # Authorization must be here or a browser client on another origin will
+    # fail its preflight (Access-Control-Request-Headers: authorization) when
+    # MCP_API_KEY auth is enabled, before it can ever send the Bearer token.
+    allow_headers=["Content-Type", "X-MCP-Session", "Authorization"],
 )
 
 # -------------------------------------------------
