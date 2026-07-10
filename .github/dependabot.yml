@@ -1,6 +1,11 @@
 # Keeps pinned dependencies, GitHub Actions, and the Docker base image
 # fresh. Pinned deps go stale (and quietly vulnerable) without an automated
 # update process — Dependabot opens PRs we can review and merge.
+#
+# Grouping keeps the noise down: routine minor/patch bumps arrive as ONE
+# consolidated PR per ecosystem, while MAJOR bumps (e.g. paramiko 4->5, a
+# new Python base image) still come as individual PRs so they get reviewed
+# on their own.
 version: 2
 updates:
   # Python dependencies (requirements.txt + requirements-dev.txt).
@@ -10,15 +15,26 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
     labels: ["dependencies", "python"]
+    groups:
+      python-minor-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        # Majors are excluded here, so they stay as separate PRs to review.
+        update-types: ["minor", "patch"]
 
-  # GitHub Actions — surfaces new versions so we can bump the pinned SHAs.
+  # GitHub Actions — bundle all bumps into one PR; the workflows run on the
+  # PR so CI validates them together.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
     labels: ["dependencies", "ci"]
+    groups:
+      github-actions:
+        patterns: ["*"]
 
-  # Docker base image (python:3.11-slim).
+  # Docker base image (python:3.11-slim). Left ungrouped so a base-image
+  # major (e.g. 3.11 -> 3.14) gets its own PR and a deliberate review.
   - package-ecosystem: "docker"
     directory: "/"
     schedule:

@@ -26,6 +26,11 @@ client — can use to inspect and safely change a SONiC fabric.
 - **GitHub (client):** https://github.com/YuryOstrovsky/sonic-mcp-community-client
 - **Docker Hub (server):** [`extremecanada/sonic-mcp-community-server`](https://hub.docker.com/r/extremecanada/sonic-mcp-community-server)
 - **Docker Hub (client):** [`extremecanada/sonic-mcp-community-client`](https://hub.docker.com/r/extremecanada/sonic-mcp-community-client)
+- **GHCR (server):** `ghcr.io/yuryostrovsky/sonic-mcp-community-server`
+
+> Each tagged release publishes **identical immutable tags** (`0.1.0`,
+> `0.1`, `latest`, …) to both Docker Hub and GHCR, so whichever you pull,
+> a given version is the same image tied to that GitHub release.
 
 ---
 

@@ -12,6 +12,18 @@ First public community release of the SONiC MCP Community Server: 55 tools
 across reads, mutations, and fabric-level diagnostics over RESTCONF, SSH,
 and `vtysh`.
 
+### Security
+
+- Pinned dependencies updated to clear 13 known CVEs flagged by `pip-audit`
+  before the first release: `cryptography` 46.0.4 → 49.0.0, `starlette`
+  0.50.0 → 1.3.1 (compatible with FastAPI 0.139.0, which allows
+  `starlette>=0.46`), and `paramiko` 4.0.0 → 5.0.0 (CVE-2026-44405 in the
+  SSH transport). Verified `pip-audit --strict` reports no known
+  vulnerabilities and the full suite + image boot pass on the new pins.
+- Corrected an unresolvable `pydantic-core` pin (2.47.0 → 2.46.4) that a
+  grouped Dependabot bump introduced, which had broken `pip install`, the
+  Docker build, and CI.
+
 ### Added
 
 - **API authentication** — optional `MCP_API_KEY` Bearer token gating
@@ -26,6 +38,11 @@ and `vtysh`.
 - `SECURITY.md`, `CODE_OF_CONDUCT.md`, and this `CHANGELOG.md`.
 - Dependency and container security scanning in CI (pip-audit, Trivy),
   SBOM generation on release, and Dependabot updates.
+- Release workflow now re-runs the full quality gate (ruff, pytest,
+  pip-audit) before publishing, and pushes identical immutable tags to both
+  GHCR and Docker Hub so a release and the pulled image always match.
+- `Authorization` added to the CORS allow-list so a browser client on
+  another origin can authenticate (its preflight no longer fails).
 - Prominent **Security and intended use** section in the README, plus a
   SONiC compatibility matrix and clarified MCP-protocol scope.
 

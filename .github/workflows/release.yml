@@ -13,7 +13,30 @@ permissions:
   id-token: write   # provenance attestation signing
 
 jobs:
+  # Re-run the full quality gate on the tagged commit. A tag can be created
+  # from a commit whose CI never ran (or failed), so a release must not be
+  # able to bypass lint/tests/audit — the image job depends on this.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dev dependencies
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          pip install -r requirements-dev.txt
+      - name: Ruff (fast lint)
+        run: ruff check sonic/ mcp_runtime/ api/ tests/
+      - name: pytest
+        run: pytest -ra
+      - name: Dependency audit
+        run: pip-audit -r requirements.txt --strict
+
   image:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,11 +51,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Publish the same immutable tags to Docker Hub as well, so users who
+      # pull extremecanada/... (per the README/compose) get exactly the image
+      # tied to this GitHub release. Requires two repo secrets:
+      #   DOCKERHUB_USERNAME  — a Docker Hub account with push to the org
+      #   DOCKERHUB_TOKEN     — a Docker Hub access token (not the password)
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Derive image metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          # Same tag set is generated for every image listed here.
+          images: |
+            ghcr.io/${{ github.repository }}
+            docker.io/extremecanada/sonic-mcp-community-server
           # Tags produced:
           #   v1.2.3        → 1.2.3, 1.2, 1, latest (when final release)
           #   v1.2.3-rc1    → 1.2.3-rc1
@@ -66,7 +103,7 @@ jobs:
           output-file: sbom.spdx.json
 
       - name: Scan pushed image for vulnerabilities (Trivy)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
           format: table
