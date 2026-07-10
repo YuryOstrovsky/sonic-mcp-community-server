@@ -10,7 +10,7 @@
 # ---------------------------------------------------------------
 # Stage 1 — builder: install deps into a self-contained prefix
 # ---------------------------------------------------------------
-FROM python:3.11-slim AS builder
+FROM python:3.14-slim AS builder
 
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -31,7 +31,7 @@ RUN pip install --prefix=/install --no-cache-dir -r requirements.txt
 # ---------------------------------------------------------------
 # Stage 2 — runtime: copy deps + app code, drop build tooling
 # ---------------------------------------------------------------
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 LABEL org.opencontainers.image.title="SONiC MCP Community Server" \
       org.opencontainers.image.description="FastAPI-based Model Context Protocol server for SONiC switches" \
