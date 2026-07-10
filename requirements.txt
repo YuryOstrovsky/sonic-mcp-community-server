@@ -18,7 +18,7 @@ jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 Markdown==3.10.2
 mcp==1.26.0
-prometheus_client==0.24.1
+prometheus_client==0.25.0
 pycparser==3.0
 pydantic==2.12.5
 pydantic-settings==2.12.0
