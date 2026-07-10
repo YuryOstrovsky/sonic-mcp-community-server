@@ -205,6 +205,40 @@ class TestAuth:
         assert auth_client.get("/inventory").status_code == 200
 
 
+@pytest.fixture
+def cors_client(tmp_path: Path, monkeypatch) -> TestClient:
+    """App instance with a CORS origin allow-list configured."""
+    inv = tmp_path / "inventory.json"
+    inv.write_text(json.dumps({"switches": [
+        {"name": "leaf1", "mgmt_ip": "10.0.0.1", "tags": ["leaf"]},
+    ]}), encoding="utf-8")
+    monkeypatch.setenv("SONIC_INVENTORY_PATH", str(inv))
+    monkeypatch.setenv("CORS_ORIGINS", "https://client.example")
+    import importlib
+    import api.app as app_module
+    importlib.reload(app_module)
+    return TestClient(app_module.app)
+
+
+class TestCORS:
+    def test_preflight_allows_authorization_header(self, cors_client: TestClient):
+        # A browser client on another origin preflights /invoke before it can
+        # send the Bearer token. Authorization must be an allowed header or
+        # the preflight fails and the real request never goes out.
+        r = cors_client.options(
+            "/invoke",
+            headers={
+                "Origin": "https://client.example",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "authorization,content-type",
+            },
+        )
+        assert r.status_code == 200
+        allowed = r.headers.get("access-control-allow-headers", "").lower()
+        assert "authorization" in allowed
+        assert r.headers.get("access-control-allow-origin") == "https://client.example"
+
+
 class TestInventoryPasswordEnv:
     def test_password_env_persists_and_is_returned(self, client: TestClient):
         r = client.post("/inventory/switches", json={
