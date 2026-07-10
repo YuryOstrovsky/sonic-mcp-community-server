@@ -14,8 +14,9 @@
 
 services:
   mcp:
+    # Uncomment `build: .` to build locally instead of pulling the published image.
     # build: .
-    image: sonic-mcp-community-server:latest
+    image: extremecanada/sonic-mcp-community-server:latest
     container_name: sonic-mcp
     restart: unless-stopped
 
