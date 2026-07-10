@@ -1,0 +1,50 @@
+name: Dependabot auto-merge
+
+# "Merge when it's ready": enable GitHub auto-merge on Dependabot PRs so
+# they merge THEMSELVES once the required CI checks pass — but only for
+# routine minor/patch bumps. Major bumps (e.g. paramiko 4->5, a new Python
+# base image) are deliberately left open for a human to review.
+#
+# Requires two one-time repo settings (Code can't toggle these):
+#   1. Settings -> General -> Pull Requests -> "Allow auto-merge" (checkbox)
+#   2. Settings -> Branches -> branch protection rule on `main` that
+#      requires the CI status checks (pytest / audit / docker) to pass.
+# Without a required-checks rule, auto-merge would merge immediately instead
+# of waiting for CI — the protection rule is what makes "when ready" real.
+
+on: pull_request_target
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    # Only ever act on Dependabot's own PRs.
+    if: ${{ github.actor == 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge for minor/patch updates
+        # semver-major is intentionally excluded -> those PRs stay open.
+        if: >-
+          steps.meta.outputs.update-type == 'version-update:semver-minor' ||
+          steps.meta.outputs.update-type == 'version-update:semver-patch'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Leave a note on major updates
+        if: ${{ steps.meta.outputs.update-type == 'version-update:semver-major' }}
+        run: |
+          gh pr comment "$PR_URL" --body \
+            "🔒 Major version bump (\`${{ steps.meta.outputs.dependency-names }}\` → ${{ steps.meta.outputs.new-version }}). Auto-merge is intentionally **not** enabled — please review the changelog and merge manually once CI is green."
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
