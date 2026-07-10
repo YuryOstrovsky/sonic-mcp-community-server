@@ -95,17 +95,23 @@ jobs:
           sbom: true
           provenance: mode=max
 
+      # OCI refs must be lowercase, but github.repository preserves the owner's
+      # case (YuryOstrovsky). Lowercase it for the by-digest scan/SBOM refs.
+      - name: Compute lowercase image ref
+        id: ref
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}@${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
       - name: Generate SBOM artifact (SPDX)
         uses: anchore/sbom-action@v0
         with:
-          image: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
+          image: ${{ steps.ref.outputs.image }}
           format: spdx-json
           output-file: sbom.spdx.json
 
       - name: Scan pushed image for vulnerabilities (Trivy)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
+          image-ref: ${{ steps.ref.outputs.image }}
           format: table
           exit-code: "1"          # a release should not ship known CRITICALs
           ignore-unfixed: true
