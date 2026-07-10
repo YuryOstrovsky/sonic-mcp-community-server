@@ -90,6 +90,10 @@ class SonicDevice:
     # env-based creds still work unchanged when these are None.
     username: Optional[str] = None
     password: Optional[str] = None
+    # Preferred over `password`: the *name* of an environment variable that
+    # holds the secret, so the plaintext never lives in inventory.json.
+    # e.g. "password_env": "SONIC_SPINE1_PASSWORD"
+    password_env: Optional[str] = None
 
 
 # Hardcoded fallback — used only when the JSON file is missing.
@@ -118,10 +122,12 @@ def _parse_devices(raw: Dict) -> List[SonicDevice]:
         tags = tuple(str(t) for t in tags_raw if isinstance(t, (str, int)))
         username = row.get("username")
         password = row.get("password")
+        password_env = row.get("password_env")
         out.append(SonicDevice(
             name=name, mgmt_ip=mgmt_ip, tags=tags,
             username=str(username) if username else None,
             password=str(password) if password else None,
+            password_env=str(password_env) if password_env else None,
         ))
     return out
 
@@ -252,4 +258,6 @@ def _device_to_json(d: SonicDevice) -> Dict:
         row["username"] = d.username
     if d.password:
         row["password"] = d.password
+    if d.password_env:
+        row["password_env"] = d.password_env
     return row

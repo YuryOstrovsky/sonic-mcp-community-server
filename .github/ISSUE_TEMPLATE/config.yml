@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Report a security vulnerability
+    url: https://github.com/YuryOstrovsky/sonic-mcp-community-server/security/advisories/new
+    about: Please report vulnerabilities privately — do NOT open a public issue. See SECURITY.md.
+  - name: 💬 Questions & discussion
+    url: https://github.com/YuryOstrovsky/sonic-mcp-community-server/discussions
+    about: Ask usage questions, share setups, or propose ideas here rather than filing a bug.

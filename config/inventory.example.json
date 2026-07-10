@@ -1,5 +1,6 @@
 {
-  "_comment": "Example SONiC MCP inventory. Copy to inventory.json and edit. Per-device username/password are optional; defaults fall back to SONIC_DEFAULT_USERNAME / _PASSWORD from .env, then to the SONiC factory default 'admin' / 'YourPaSsWoRd'.",
+  "_comment": "Example SONiC MCP inventory. Copy to inventory.json and edit. Per-device credentials are optional; without them, resolution falls back to SONIC_HOST_<ip>_* then SONIC_DEFAULT_USERNAME / _PASSWORD from .env, then the SONiC factory default 'admin' / 'YourPaSsWoRd'.",
+  "_security": "Prefer 'password_env' (name of an env var holding the secret) over an inline 'password' so no plaintext secret lives in this file. Keep the real inventory.json out of Git (it is git-ignored) and off screenshots/logs.",
   "switches": [
     {
       "name": "vm1",
@@ -10,6 +11,14 @@
       "name": "vm2",
       "mgmt_ip": "10.46.11.51",
       "tags": ["lab", "vm", "sonic-vs"]
+    },
+    {
+      "_note": "Per-switch credentials via env var — set SONIC_SPINE1_PASSWORD in your environment.",
+      "name": "spine1",
+      "mgmt_ip": "10.0.0.1",
+      "tags": ["spine"],
+      "username": "admin",
+      "password_env": "SONIC_SPINE1_PASSWORD"
     }
   ]
 }

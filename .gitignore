@@ -12,6 +12,16 @@ venv/
 .env
 .env.*
 !.env.example
+# Private keys / certs / local credential files
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+*_rsa
+secrets.*
+credentials.json
 
 # OS junk
 .DS_Store

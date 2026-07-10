@@ -148,3 +148,77 @@ class TestHealth:
         r = client.get("/health")
         assert r.status_code == 200
         assert r.json()["status"] == "ok"
+
+    def test_health_reports_authoritative_version(self, client: TestClient):
+        from mcp_runtime.version import __version__
+        r = client.get("/health")
+        assert r.json()["version"] == __version__
+
+
+@pytest.fixture
+def auth_client(tmp_path: Path, monkeypatch) -> TestClient:
+    """App instance with MCP_API_KEY set, so protected routes require a token."""
+    inv = tmp_path / "inventory.json"
+    inv.write_text(json.dumps({"switches": [
+        {"name": "leaf1", "mgmt_ip": "10.0.0.1", "tags": ["leaf"]},
+    ]}), encoding="utf-8")
+    monkeypatch.setenv("SONIC_INVENTORY_PATH", str(inv))
+    monkeypatch.setenv("MCP_API_KEY", "s3cr3t-test-key")
+    import importlib
+    import api.app as app_module
+    importlib.reload(app_module)
+    return TestClient(app_module.app)
+
+
+class TestAuth:
+    def test_public_routes_need_no_key(self, auth_client: TestClient):
+        # health / ready / tools / metrics stay open even with a key set.
+        assert auth_client.get("/health").status_code == 200
+        assert auth_client.get("/tools").status_code == 200
+
+    def test_invoke_without_key_is_401(self, auth_client: TestClient):
+        r = auth_client.post("/invoke", json={"tool": "get_system_info", "inputs": {}})
+        assert r.status_code == 401
+
+    def test_invoke_with_wrong_key_is_401(self, auth_client: TestClient):
+        r = auth_client.post(
+            "/invoke",
+            json={"tool": "get_system_info", "inputs": {}},
+            headers={"Authorization": "Bearer nope"},
+        )
+        assert r.status_code == 401
+
+    def test_write_endpoints_require_key(self, auth_client: TestClient):
+        # POST /inventory/switches is a protected write.
+        r = auth_client.post("/inventory/switches", json={"name": "x", "mgmt_ip": "10.5.5.5"})
+        assert r.status_code == 401
+        # With the right key it goes through.
+        r2 = auth_client.post(
+            "/inventory/switches",
+            json={"name": "x", "mgmt_ip": "10.5.5.5"},
+            headers={"Authorization": "Bearer s3cr3t-test-key"},
+        )
+        assert r2.status_code == 200
+
+    def test_reads_stay_open_with_key_set(self, auth_client: TestClient):
+        # GET /inventory is a read — not gated.
+        assert auth_client.get("/inventory").status_code == 200
+
+
+class TestInventoryPasswordEnv:
+    def test_password_env_persists_and_is_returned(self, client: TestClient):
+        r = client.post("/inventory/switches", json={
+            "name": "spine1", "mgmt_ip": "10.7.7.7",
+            "username": "admin", "password_env": "SONIC_SPINE1_PASSWORD",
+        })
+        assert r.status_code == 200
+        match = [s for s in r.json()["switches"] if s["mgmt_ip"] == "10.7.7.7"][0]
+        # password_env is not a secret — safe to echo back so the UI can show it.
+        assert match["password_env"] == "SONIC_SPINE1_PASSWORD"
+        assert "password" not in match
+        # And it round-trips to disk.
+        path = Path(r.json()["path"])
+        raw = json.loads(path.read_text())
+        on_disk = [s for s in raw["switches"] if s["mgmt_ip"] == "10.7.7.7"][0]
+        assert on_disk["password_env"] == "SONIC_SPINE1_PASSWORD"
+        assert "password" not in on_disk

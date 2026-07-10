@@ -45,10 +45,11 @@ sudo chown -R 1000:1000 config logs snapshots
 docker pull extremecanada/sonic-mcp-community-server:latest
 
 docker run -d --name sonic-mcp \
-  -p 8000:8000 \
+  -p 127.0.0.1:8000:8000 \
   -e SONIC_DEFAULT_USERNAME=admin \
   -e SONIC_DEFAULT_PASSWORD=YourPaSsWoRd \
-  -e MCP_MUTATIONS_ENABLED=1 \
+  -e MCP_API_KEY=$(openssl rand -hex 32) \
+  -e MCP_MUTATIONS_ENABLED=0 \
   -v $(pwd)/config:/app/config \
   -v $(pwd)/logs:/app/logs \
   -v $(pwd)/snapshots:/app/snapshots \
@@ -59,6 +60,12 @@ curl http://localhost:8000/tools | jq 'length'   # → 55
 
 That's it. Point it at any SONiC switch reachable from the container
 over RESTCONF (`:443`) and SSH (`:22`).
+
+> ⚠️ **Read-only by default** (`MCP_MUTATIONS_ENABLED=0`) — set it to `1`
+> to enable write tools. **Set `MCP_API_KEY`** to require Bearer auth on
+> `/invoke` and write endpoints; without it the API is unauthenticated.
+> The example binds to `127.0.0.1` — **never publish port 8000 to the
+> Internet.** See the Security section of the repo README.
 
 ---
 
@@ -86,7 +93,8 @@ Create `.env` alongside:
 ```env
 SONIC_DEFAULT_USERNAME=admin
 SONIC_DEFAULT_PASSWORD=YourPaSsWoRd
-MCP_MUTATIONS_ENABLED=1
+MCP_API_KEY=change-me-to-a-long-random-secret
+MCP_MUTATIONS_ENABLED=0
 SONIC_VERIFY_TLS=false
 ```
 
@@ -100,7 +108,8 @@ Then: `docker compose up -d`.
 |---|---|---|
 | `SONIC_DEFAULT_USERNAME` / `_PASSWORD` | `admin` / `YourPaSsWoRd` | SONiC factory defaults. Override per-host with `SONIC_HOST_<IP_with_underscores>_USERNAME` / `_PASSWORD` or in `inventory.json`. |
 | `SONIC_INVENTORY_PATH` | `config/inventory.json` | File-backed inventory. Hot-reloaded on mtime change. |
-| `MCP_MUTATIONS_ENABLED` | `1` | Server-wide kill switch. `0` makes every MUTATION/DESTRUCTIVE tool return 403 |
+| `MCP_API_KEY` | — (unset) | When set, `/invoke` + write endpoints require `Authorization: Bearer <key>`. Unset = no auth (logs a warning). |
+| `MCP_MUTATIONS_ENABLED` | `0` | Server-wide kill switch. `0` (default) makes every MUTATION/DESTRUCTIVE tool return 403; set `1` to allow writes |
 | `SONIC_VERIFY_TLS` | `false` | RESTCONF TLS verify (lab switches use self-signed) |
 | `SONIC_RESTCONF_PORT` | `443` | mgmt-framework HTTPS port |
 | `SONIC_SSH_TIMEOUT_SECONDS` | `20` | paramiko SSH timeout |
@@ -141,14 +150,17 @@ intent, and snapshot lives on the host.
 
 ## 🛡️ Safety tiers
 
-Every mutation is triple-gated:
+Access + every mutation are gated:
 
-1. **`MCP_MUTATIONS_ENABLED=0`** → 403 on every write tool
+0. **`MCP_API_KEY`** → `/invoke` and write endpoints require
+   `Authorization: Bearer <key>` (when set)
+1. **`MCP_MUTATIONS_ENABLED=0`** (default) → 403 on every write tool
 2. **Per-tool `requires_confirmation`** → client must send `confirm=true`
 3. **Auto-mode allow-list** → gates agentic callers
 
 Every successful mutation lands in `/app/logs/mutations.jsonl` with
-pre/post state. `rollback_mutation` replays any reversible entry.
+pre/post state. `rollback_mutation` replays any reversible entry — it is
+**best-effort, not a transactional undo** (see the repo README).
 
 ---
 

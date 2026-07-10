@@ -73,9 +73,16 @@ EXPOSE 8000
 # ---------------------------------------------------------------
 # Runtime defaults — overridable via `docker run -e …` or compose `environment:`
 # ---------------------------------------------------------------
-# Mutations ARE allowed by default; ops that want a read-only mirror flip
-# this to 0 in their .env / compose file.
-ENV MCP_MUTATIONS_ENABLED=1 \
+# Read-only by DEFAULT: mutations are disabled unless the operator opts in.
+# Docker is the easiest install path, so the safe default matters — a user
+# who runs the image without any env vars must not get write access to their
+# switches. Set MCP_MUTATIONS_ENABLED=1 in your .env / compose file to enable
+# the MUTATION/DESTRUCTIVE tools (per-tool confirmation still applies).
+#
+# API authentication is likewise OFF unless MCP_API_KEY is set — the server
+# logs a loud warning at startup when it is unset. Set MCP_API_KEY to a long
+# random secret, and never expose this port directly to the Internet.
+ENV MCP_MUTATIONS_ENABLED=0 \
     SONIC_MCP_PORT=8000 \
     SONIC_VERIFY_TLS=false
 

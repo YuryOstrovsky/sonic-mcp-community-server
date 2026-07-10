@@ -1,13 +1,15 @@
 # api/app.py
 
 import concurrent.futures
+import hmac
 import os
 import threading
 import time
+import uuid
 from collections import deque
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, Header, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from pydantic import BaseModel
@@ -19,6 +21,7 @@ from mcp_runtime.session_store import SessionStore
 from mcp_runtime.errors import ToolNotFound
 from mcp_runtime.policy import PolicyViolation
 from mcp_runtime.logging import get_logger
+from mcp_runtime.version import __version__
 from api.docs_routes import router as docs_router
 
 logger = get_logger("mcp.api")
@@ -27,7 +30,52 @@ logger = get_logger("mcp.api")
 # App & MCP initialization
 # -------------------------------------------------
 
-app = FastAPI(title="SONiC MCP Community Server")
+app = FastAPI(title="SONiC MCP Community Server", version=__version__)
+
+# -------------------------------------------------
+# Authentication (Bearer token)
+# -------------------------------------------------
+# If MCP_API_KEY is set, mutating and tool-invoking endpoints require an
+#   Authorization: Bearer <key>
+# header. If it is unset, authentication is DISABLED — convenient for a
+# throwaway local lab, but every caller who can reach the port can invoke
+# tools and change switch config. We log a loud warning at startup so this
+# is never a silent surprise, and the README tells operators to either set
+# the key or bind the service to a trusted management network.
+#
+# Public (never require a key): /health, /ready, /tools, /metrics, and the
+# /docs* documentation routes. Everything that invokes a tool or writes
+# state is protected.
+
+_AUTH_DISABLED_WARNING = (
+    "MCP_API_KEY is not set — API authentication is DISABLED. Any client "
+    "that can reach this port can invoke tools and change switch config. "
+    "Set MCP_API_KEY to a long random secret, or bind the service to a "
+    "trusted management network / authenticated reverse proxy. Never expose "
+    "it directly to the Internet."
+)
+
+if not os.environ.get("MCP_API_KEY", "").strip():
+    logger.warning(_AUTH_DISABLED_WARNING)
+
+
+def require_auth(authorization: Optional[str] = Header(default=None)) -> None:
+    """FastAPI dependency enforcing the Bearer API key on protected routes.
+
+    No-op when MCP_API_KEY is unset (auth disabled). Uses a constant-time
+    compare so the check doesn't leak the key length/prefix via timing.
+    """
+    key = os.environ.get("MCP_API_KEY", "").strip()
+    if not key:
+        return  # auth disabled
+    expected = f"Bearer {key}"
+    supplied = authorization or ""
+    if not hmac.compare_digest(supplied, expected):
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or invalid API key",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 # Fix #24: CORS — restrictive by default; set CORS_ORIGINS env var to allow
 # specific origins (comma-separated), or "*" for any origin.
@@ -124,7 +172,7 @@ class InvokeRequest(BaseModel):
 # Endpoints
 # -------------------------------------------------
 
-@app.post("/invoke")
+@app.post("/invoke", dependencies=[Depends(require_auth)])
 def invoke_tool(
     request: Request,
     req: InvokeRequest,
@@ -171,8 +219,19 @@ def invoke_tool(
         raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        # Fix #5: never return raw internal exception text to clients — it
+        # can leak host paths, SSH errors, or device internals. Log the full
+        # traceback server-side under a request ID and hand the caller only
+        # that ID so an operator can correlate it in the logs.
+        request_id = uuid.uuid4().hex[:12]
+        logger.exception(
+            "tool invocation failed request_id=%s tool=%s", request_id, req.tool
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error. Request ID: {request_id}",
+        )
 
 
 @app.get("/tools")
@@ -186,7 +245,7 @@ def health():
         "status": "ok",
         "service": "sonic-mcp",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "version": "1.0",
+        "version": __version__,
     }
 
 @app.get("/metrics")
@@ -397,7 +456,7 @@ class _IntentPutBody(BaseModel):
     raw: Optional[str] = None
 
 
-@app.put("/fabric/intent")
+@app.put("/fabric/intent", dependencies=[Depends(require_auth)])
 def fabric_intent_put(body: _IntentPutBody):
     """Write a new intent file. Validates JSON before touching disk.
 
@@ -459,6 +518,9 @@ class _InventoryDeviceBody(BaseModel):
     tags: list = []
     username: Optional[str] = None
     password: Optional[str] = None
+    # Preferred over an inline password: the name of an env var holding the
+    # secret. Keeps plaintext out of config/inventory.json.
+    password_env: Optional[str] = None
 
 
 class _InventoryPutBody(BaseModel):
@@ -474,6 +536,7 @@ def _device_view(d: _SonicDevice) -> Dict[str, Any]:
         "tags": list(d.tags or ()),
         "username": d.username,
         "has_password": bool(d.password),
+        "password_env": d.password_env,
     }
 
 
@@ -487,7 +550,7 @@ def inventory_get():
     }
 
 
-@app.put("/inventory")
+@app.put("/inventory", dependencies=[Depends(require_auth)])
 def inventory_put(body: _InventoryPutBody):
     """Replace the entire inventory with the given list."""
     devs = [
@@ -497,6 +560,7 @@ def inventory_put(body: _InventoryPutBody):
             tags=tuple(str(t) for t in (s.tags or [])),
             username=s.username or None,
             password=s.password or None,
+            password_env=s.password_env or None,
         )
         for s in body.switches
     ]
@@ -505,7 +569,7 @@ def inventory_put(body: _InventoryPutBody):
     return inventory_get()
 
 
-@app.post("/inventory/switches")
+@app.post("/inventory/switches", dependencies=[Depends(require_auth)])
 def inventory_add(body: _InventoryDeviceBody):
     """Add or update a single switch. Replaces any existing entry with
     the same mgmt_ip."""
@@ -516,6 +580,7 @@ def inventory_add(body: _InventoryDeviceBody):
         tags=tuple(str(t) for t in (body.tags or [])),
         username=body.username or None,
         password=body.password or None,
+        password_env=body.password_env or None,
     )
     _validate_devices([new])
     existing = [d for d in existing if d.mgmt_ip != new.mgmt_ip]
@@ -524,7 +589,7 @@ def inventory_add(body: _InventoryDeviceBody):
     return inventory_get()
 
 
-@app.delete("/inventory/switches/{mgmt_ip}")
+@app.delete("/inventory/switches/{mgmt_ip}", dependencies=[Depends(require_auth)])
 def inventory_delete(mgmt_ip: str):
     existing = list(mcp.inventory.devices)
     remaining = [d for d in existing if d.mgmt_ip != mgmt_ip]
@@ -540,7 +605,7 @@ class _InventoryProbeBody(BaseModel):
     password: Optional[str] = None
 
 
-@app.post("/inventory/probe")
+@app.post("/inventory/probe", dependencies=[Depends(require_auth)])
 def inventory_probe(body: _InventoryProbeBody):
     """Test RESTCONF + SSH reachability with given creds — without
     persisting anything. Returns the same shape as /ready's per-device

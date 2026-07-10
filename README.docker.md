@@ -19,8 +19,14 @@ cp .env.example .env
 # Edit .env and set at minimum:
 #   SONIC_DEFAULT_USERNAME=admin
 #   SONIC_DEFAULT_PASSWORD=YourPaSsWoRd   # the SONiC factory default
-#   MCP_MUTATIONS_ENABLED=1               # set 0 for a read-only mirror
+#   MCP_API_KEY=$(openssl rand -hex 32)   # require Bearer auth (strongly recommended)
+#   MCP_MUTATIONS_ENABLED=0               # read-only by default; set 1 to allow writes
 ```
+
+> ⚠️ **Do not expose port 8000 to the Internet.** Run on a trusted
+> management network or behind an authenticated reverse proxy. See the
+> Security section of the main [`README.md`](./README.md) and
+> [`SECURITY.md`](./SECURITY.md).
 
 Optional — create an inventory file so the server talks to your lab
 instead of the built-in `vm1`/`vm2` starter. A template ships as
@@ -123,9 +129,11 @@ volumes:
   `logs/` inherit that ownership — on most hosts the first user already
   has uid 1000 so no `chown` is needed.
 - `no-new-privileges: true` is on by default.
-- **This build has no auth on the REST API.** It's designed for private
-  lab networks. Put a reverse proxy (nginx + basic auth, Cloudflare
-  Access, Tailscale, etc.) in front if you expose it beyond a trusted net.
-- `MCP_MUTATIONS_ENABLED=0` turns the server into a read-only mirror —
-  every mutation tool returns 403. Recommended default for any deployment
-  not owned by you.
+- **Set `MCP_API_KEY`** to require an `Authorization: Bearer <key>` on
+  `/invoke` and all write endpoints. When unset, the API has **no auth** and
+  the server logs a startup warning. Even with a key, keep it on a private
+  lab network and/or behind a reverse proxy (nginx + basic auth, Cloudflare
+  Access, Tailscale, etc.). **Never expose port 8000 to the Internet.**
+- `MCP_MUTATIONS_ENABLED` defaults to `0` (read-only) — every mutation tool
+  returns 403 until you set it to `1`. Leave it at `0` for any deployment
+  you don't fully control.
