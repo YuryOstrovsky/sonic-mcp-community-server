@@ -59,7 +59,7 @@ jobs:
           load: true
           tags: sonic-mcp-community-server:ci
       - name: Scan image for vulnerabilities (Trivy)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: sonic-mcp-community-server:ci
           format: table
