@@ -24,16 +24,20 @@ _ALLOWED = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"}
 
 
 def _inventory_override(inventory, switch_ip: str):
-    """Return (username, password) from the inventory entry if it carries
-    per-device credentials; else (None, None). Tolerant of a missing or
-    partially-configured inventory."""
+    """Return (username, password, password_env) from the inventory entry
+    if it carries per-device credentials; else (None, None, None). Tolerant
+    of a missing or partially-configured inventory."""
     if inventory is None:
-        return None, None
+        return None, None, None
     try:
         dev = inventory.resolve(switch_ip)
-        return getattr(dev, "username", None), getattr(dev, "password", None)
+        return (
+            getattr(dev, "username", None),
+            getattr(dev, "password", None),
+            getattr(dev, "password_env", None),
+        )
     except Exception:
-        return None, None
+        return None, None, None
 
 
 class RestconfError(Exception):
@@ -70,11 +74,12 @@ class SonicRestconfTransport:
             s = self._sessions.get(switch_ip)
             if s is not None:
                 return s
-            override_u, override_p = _inventory_override(self.inventory, switch_ip)
+            override_u, override_p, override_pe = _inventory_override(self.inventory, switch_ip)
             creds = SonicCredentials.for_host(
                 switch_ip,
                 inventory_username=override_u,
                 inventory_password=override_p,
+                inventory_password_env=override_pe,
             )
             s = requests.Session()
             s.auth = (creds.username, creds.password)

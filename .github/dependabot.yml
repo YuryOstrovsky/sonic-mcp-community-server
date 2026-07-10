@@ -1,0 +1,26 @@
+# Keeps pinned dependencies, GitHub Actions, and the Docker base image
+# fresh. Pinned deps go stale (and quietly vulnerable) without an automated
+# update process — Dependabot opens PRs we can review and merge.
+version: 2
+updates:
+  # Python dependencies (requirements.txt + requirements-dev.txt).
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels: ["dependencies", "python"]
+
+  # GitHub Actions — surfaces new versions so we can bump the pinned SHAs.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies", "ci"]
+
+  # Docker base image (python:3.11-slim).
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies", "docker"]

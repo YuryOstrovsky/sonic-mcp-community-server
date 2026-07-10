@@ -112,3 +112,36 @@ class TestResolve:
         d = inv.resolve("192.0.2.42")
         assert d.mgmt_ip == "192.0.2.42"
         assert "ad-hoc" in d.tags
+
+
+class TestPasswordEnv:
+    def test_password_env_round_trips(self, inv_path):
+        _write(inv_path, [
+            {"name": "spine1", "mgmt_ip": "10.0.0.1",
+             "username": "admin", "password_env": "SONIC_SPINE1_PASSWORD"},
+        ])
+        inv = SonicInventory()
+        dev = inv.resolve("10.0.0.1")
+        assert dev.password_env == "SONIC_SPINE1_PASSWORD"
+        assert dev.password is None
+
+    def test_credentials_resolve_from_named_env_var(self, monkeypatch):
+        from sonic.credentials import SonicCredentials
+        monkeypatch.setenv("SONIC_SPINE1_PASSWORD", "from-env-var")
+        creds = SonicCredentials.for_host(
+            "10.0.0.1",
+            inventory_username="admin",
+            inventory_password_env="SONIC_SPINE1_PASSWORD",
+        )
+        assert creds.username == "admin"
+        assert creds.password == "from-env-var"
+
+    def test_inline_password_wins_over_password_env(self, monkeypatch):
+        from sonic.credentials import SonicCredentials
+        monkeypatch.setenv("SONIC_SPINE1_PASSWORD", "from-env-var")
+        creds = SonicCredentials.for_host(
+            "10.0.0.1",
+            inventory_password="inline",
+            inventory_password_env="SONIC_SPINE1_PASSWORD",
+        )
+        assert creds.password == "inline"

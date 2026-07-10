@@ -60,18 +60,20 @@ class SonicSshTransport:
                 except Exception:
                     pass
 
-            override_u = override_p = None
+            override_u = override_p = override_pe = None
             if self.inventory is not None:
                 try:
                     dev = self.inventory.resolve(switch_ip)
                     override_u = getattr(dev, "username", None)
                     override_p = getattr(dev, "password", None)
+                    override_pe = getattr(dev, "password_env", None)
                 except Exception:
                     pass
             creds = SonicCredentials.for_host(
                 switch_ip,
                 inventory_username=override_u,
                 inventory_password=override_p,
+                inventory_password_env=override_pe,
             )
             c = paramiko.SSHClient()
             c.set_missing_host_key_policy(paramiko.AutoAddPolicy())

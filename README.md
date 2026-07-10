@@ -58,6 +58,52 @@ Every tool handler receives a `SonicTransport` object with `.restconf`,
 `.ssh`, and `.inventory`. Which one a tool uses is declared in the catalog
 so the UI can render it (you'll see `transport: ssh` next to a result).
 
+### Protocol compatibility
+
+> **Heads-up on the name.** The `/tools` and `/invoke` endpoints are a
+> **custom, MCP-inspired REST API** — the interface the companion web
+> client and any HTTP caller use. The server does **not yet expose a
+> standards-compliant MCP transport** (stdio, SSE, or Streamable HTTP), so
+> you **cannot** point Claude Desktop, Codex, or another off-the-shelf MCP
+> client at it and expect plug-and-play tool discovery today.
+
+An AI agent integrates by calling the REST API directly: `GET /tools` for
+the catalog (name, input schema, policy, transport) and `POST /invoke` to
+run one. The `mcp` package is a dependency for tool/type modelling; a
+standards-compliant transport is on the roadmap. If/when it lands, this
+section will name the exact transport and how to connect.
+
+---
+
+## Security and intended use
+
+> ⚠️ **This server can change the configuration of network
+> infrastructure.** Read this before you run it.
+
+- **Designed for labs and trusted management networks.** It is **not**
+  intended to be Internet-facing. **Do not publish port 8000 to the public
+  Internet** — run it only on a trusted management network or behind an
+  authenticated reverse proxy.
+- **Authentication is optional but strongly recommended.** Set
+  `MCP_API_KEY` to a long random secret (`openssl rand -hex 32`) to require
+  `Authorization: Bearer <key>` on `/invoke` and every write endpoint. When
+  it is unset, auth is **disabled** and the server logs a startup warning —
+  any caller who can reach the port can change switch config. (`confirm:
+  true` is not authentication; anyone can send it.)
+- **Mutations are disabled by default** (`MCP_MUTATIONS_ENABLED=0`, in the
+  image too). Enable writes explicitly when you need them.
+- **Use least-privilege switch accounts.** Give the server only the access
+  it needs on each device.
+- **Protect `.env`, `config/inventory.json`, `logs/`, and `snapshots/`** —
+  they hold credentials and change history. They are git-ignored; keep them
+  that way and `chmod 600 .env`.
+- **Test mutations in a lab before production.** Destructive tools can
+  cause outages, and **rollback is best-effort, not a transaction
+  guarantee** (see [Rollback limitations](#rollback-limitations)).
+
+See [`SECURITY.md`](./SECURITY.md) for the full policy and how to report a
+vulnerability privately.
+
 ---
 
 ## Quickstart
@@ -118,7 +164,8 @@ All settings are `.env` / environment variables. The most useful ones:
 | `SONIC_DEFAULT_USERNAME` / `SONIC_DEFAULT_PASSWORD` | — | Credentials applied to all devices unless overridden per-host |
 | `SONIC_HOST_<IP with dots as underscores>_USERNAME` / `_PASSWORD` | — | Per-host credential overrides via env |
 | `SONIC_INVENTORY_PATH` | `config/inventory.json` | File-backed inventory (see Inventory below) |
-| `MCP_MUTATIONS_ENABLED` | `1` | Server-wide kill switch — set `0` to refuse every MUTATION/DESTRUCTIVE tool |
+| `MCP_API_KEY` | — (unset) | When set, `/invoke` + write endpoints require `Authorization: Bearer <key>`. Unset = auth disabled (logs a warning). |
+| `MCP_MUTATIONS_ENABLED` | `0` | Server-wide kill switch — `0` refuses every MUTATION/DESTRUCTIVE tool (safe default); set `1` to allow writes |
 | `SONIC_VERIFY_TLS` | `false` | RESTCONF TLS verify (lab VMs use self-signed) |
 | `SONIC_RESTCONF_PORT` | `443` | mgmt-framework port |
 | `SONIC_SSH_TIMEOUT_SECONDS` | `20` | paramiko SSH timeout |
@@ -146,8 +193,8 @@ hot-reloads on change — no restart needed.
       "name": "spine1",
       "mgmt_ip": "10.0.0.1",
       "tags": ["spine"],
-      "username": "admin2",
-      "password": "per-switch-secret"
+      "username": "admin",
+      "password_env": "SONIC_SPINE1_PASSWORD"
     }
   ]
 }
@@ -157,12 +204,21 @@ If the file is missing, malformed, or transiently empty, the server
 keeps its last good list (or falls back to a built-in `vm1`/`vm2`
 starter). A starter template ships at `config/inventory.example.json`.
 
-**Per-device credentials** — `username` / `password` on a switch entry
-take precedence over every env var. Precedence chain (highest first):
+**Per-device credentials** — a switch entry can carry credentials that
+take precedence over env vars. Precedence chain (highest first):
 
-1. Inventory JSON entry
+1. Inventory JSON entry — `password` (inline) **or** `password_env` (name
+   of an env var holding the secret; `password` wins if both are set)
 2. `SONIC_HOST_<IP_with_underscores>_USERNAME` / `_PASSWORD`
 3. `SONIC_DEFAULT_USERNAME` / `SONIC_DEFAULT_PASSWORD`
+
+> 🔐 **Credential hygiene.** An inline `"password"` is convenient for a
+> throwaway lab but writes a **plaintext secret into
+> `config/inventory.json`**, which is not appropriate for production.
+> Prefer `"password_env": "SONIC_SPINE1_PASSWORD"` (or the `SONIC_HOST_*`
+> env vars) so the secret lives in the environment / a secret-mounted file
+> instead. Keep `config/inventory.json` out of Git (it is git-ignored by
+> default) and off screenshots, logs, and issue reports.
 
 **REST API** (see below) lets the companion client or curl add / remove
 / probe switches without ever touching the JSON by hand. Anything not
@@ -183,20 +239,38 @@ add / remove / probe / discover flows.
 
 ## API surface
 
-| Endpoint | Purpose |
-|---|---|
-| `GET /tools` | The full tool catalog — JSON array, 55 entries |
-| `POST /invoke` | Run a tool. Body: `{tool, inputs, confirm?}` |
-| `GET /ready` | Probes every inventory device on RESTCONF + SSH. 503 if nothing reachable. |
-| `GET /health` | Liveness — process is up |
-| `GET /metrics` | Prometheus scrape — see below |
-| `GET /fabric/intent` / `PUT /fabric/intent` | Read/write the fabric intent JSON used by `validate_fabric_vs_intent` |
-| `GET /inventory` | Current inventory as JSON — `{path, source, switches}`. Passwords redacted (only `has_password: bool` is exposed). |
-| `PUT /inventory` | Replace the full inventory. Body: `{switches: [...]}`. |
-| `POST /inventory/switches` | Add-or-update a single switch by `mgmt_ip`. |
-| `DELETE /inventory/switches/{mgmt_ip}` | Remove a switch. |
-| `POST /inventory/probe` | Transient RESTCONF + SSH probe with supplied creds (does not persist). |
-| `POST /audit/mutations` | Mutation ledger search (also exposed as the `get_mutation_history` tool) |
+When `MCP_API_KEY` is set, endpoints marked 🔒 require an
+`Authorization: Bearer <key>` header; the rest stay open.
+
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `GET /tools` | — | The full tool catalog — JSON array, 55 entries |
+| `POST /invoke` | 🔒 | Run a tool. Body: `{tool, inputs, confirm?}`. The `get_mutation_history` tool exposes the mutation-ledger search here. |
+| `GET /ready` | — | Probes every inventory device on RESTCONF + SSH. 503 if nothing reachable. |
+| `GET /health` | — | Liveness — process is up |
+| `GET /metrics` | — | Prometheus scrape — see below |
+| `GET /fabric/intent` | — | Read the fabric intent JSON used by `validate_fabric_vs_intent` |
+| `PUT /fabric/intent` | 🔒 | Write the fabric intent JSON |
+| `GET /inventory` | — | Current inventory as JSON — `{path, source, switches}`. Passwords redacted (only `has_password: bool` is exposed). |
+| `PUT /inventory` | 🔒 | Replace the full inventory. Body: `{switches: [...]}`. |
+| `POST /inventory/switches` | 🔒 | Add-or-update a single switch by `mgmt_ip`. |
+| `DELETE /inventory/switches/{mgmt_ip}` | 🔒 | Remove a switch. |
+| `POST /inventory/probe` | 🔒 | Transient RESTCONF + SSH probe with supplied creds (does not persist). |
+
+With `MCP_API_KEY` set, pass the key on protected calls:
+
+```bash
+export MCP_API_KEY=$(openssl rand -hex 32)   # then start the server with it set
+
+curl -s http://localhost:8000/tools                 # open, no key needed
+curl -s -X POST http://localhost:8000/invoke \
+     -H "Authorization: Bearer $MCP_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{"tool": "get_system_info", "inputs": {"switch": "10.46.11.50"}}'
+```
+
+Without the header, protected endpoints return `401`. Without `MCP_API_KEY`
+set at all, auth is disabled (and the server logs a warning on startup).
 
 ---
 
@@ -277,6 +351,27 @@ IP assignment / VLAN / port-channel / static route / BGP neighbor /
 drain/undrain. Refuses `config_save` and `clear_interface_counters`
 (not reversible).
 
+### Rollback limitations
+
+> ⚠️ **Rollback is best-effort, not a transactional or guaranteed undo.**
+
+Replaying a mutation in reverse re-applies the recorded pre-state; it does
+**not** take a lock, snapshot the whole device, or verify the surrounding
+config is unchanged. A rollback can fail or produce an unexpected result
+when:
+
+- the switch has become unreachable;
+- external configuration changes happened after the original mutation;
+- interface or routing state has since changed;
+- a partial multi-switch change has already been applied elsewhere;
+- the original pre-state capture was incomplete;
+- the inverse operation is not idempotent.
+
+Treat rollback as a convenience for a well-understood lab change, not as a
+safety net for production. For point-in-time recovery of a whole device,
+use `save_fabric_snapshot` / `restore_fabric_snapshot` and always test in a
+lab first.
+
 ---
 
 ## Metrics
@@ -302,6 +397,37 @@ Prometheus scrape doesn't fanout SSH on every poll.
 
 ---
 
+## Compatibility
+
+SONiC varies substantially by release, vendor image, management-framework
+availability, FRR version, and RESTCONF implementation. What works depends
+on your image. This matrix reflects where the project has actually been
+exercised versus where it is *expected* to work:
+
+| Platform | SONiC | Read tools | Mutation tools | Transports | Status |
+|---|---|---|---|---|---|
+| **SONiC-VS** (KVM) | recent `master`/community VS builds | ✅ Yes | ⚠️ Partial | SSH, `vtysh` | **Tested** — the default 2-VM lab |
+| SONiC-VS RESTCONF (mgmt-framework) | images with `mgmt-framework` enabled | ⚠️ Partial | ⚠️ Partial | RESTCONF | Expected — depends on the YANG/mgmt-framework build |
+| Vendor / hardware SONiC | vendor images | ⚠️ Expected | ⚠️ Expected | SSH, `vtysh`, RESTCONF | **Not yet tested** — see [`sonic_initial_docs/FUTURE_HARDWARE.md`](./sonic_initial_docs/FUTURE_HARDWARE.md) |
+| Enterprise SONiC (Dell/others) | vendor releases | ❓ Unknown | ❓ Unknown | — | Unsupported / untested |
+
+**Legend:** ✅ tested & working · ⚠️ expected to work / partial · ❓ unknown.
+
+**Known limitations**
+
+- RESTCONF depends on `mgmt-framework` being present and the YANG models
+  your image ships — some reads/writes fall back to SSH/`vtysh`.
+- LLDP RX on SONiC-VS is often empty (documented upstream), so seed-walk
+  discovery finds little in the default VM lab — this shines on real
+  hardware.
+- Mutation tools are marked ⚠️ Partial on VS because behaviour depends on
+  the image's config backend; **always test in a lab first**.
+
+If you run this against hardware or another SONiC flavor, a PR updating
+this matrix (tested / expected / unsupported) is very welcome.
+
+---
+
 ## Adding a tool
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full walkthrough. In short:
@@ -324,8 +450,18 @@ pytest                         # unit tests, no switches required
 python api/run.py              # local server
 ```
 
-CI (GitHub Actions) runs pytest on Python 3.11 + 3.12 plus a Docker
-image build & boot smoke on every PR.
+CI (GitHub Actions) runs pytest on Python 3.11 + 3.12, a `pip-audit`
+dependency scan, and a Docker image build + Trivy scan + boot smoke on
+every PR. Dependabot keeps dependencies, Actions, and the base image fresh.
+
+---
+
+## Community
+
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — how to add a tool and open a PR
+- [`SECURITY.md`](./SECURITY.md) — security policy and private vulnerability reporting
+- [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md) — Contributor Covenant
+- [`CHANGELOG.md`](./CHANGELOG.md) — release history (Keep a Changelog)
 
 ---
 
@@ -345,4 +481,4 @@ image build & boot smoke on every PR.
 
 ## License
 
-Apache-2.0. See [`LICENSE`](./LICENSE) when present.
+Apache-2.0. See [`LICENSE`](./LICENSE).
