@@ -25,7 +25,9 @@ full server.
 Every tool is a single Python file in `sonic/tools/<category>/` plus
 one entry in `generated/mcp_tools.json`. The registry auto-discovers any
 non-underscore module under `sonic/tools/`, so there's no third file
-to edit.
+to edit. Your tool then appears on **every** surface automatically — the
+`/tools` + `/invoke` REST API *and* standard MCP (`/mcp` + stdio) — with its
+JSON Schema and risk policy carried straight from the catalog entry.
 
 ### 1. Write the handler
 

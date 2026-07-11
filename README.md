@@ -1,12 +1,17 @@
 # SONiC MCP Community Server
 
-A **Model Context Protocol (MCP)** server for **SONiC** switches. Exposes
-a tool catalog and invocation API that any AI agent — or plain HTTP
-client — can use to inspect and safely change a SONiC fabric.
+A **Model Context Protocol (MCP)** server for **SONiC** switches. The same
+55-tool catalog is exposed over **standard MCP** (stdio + Streamable HTTP)
+*and* a custom REST API — so an off-the-shelf MCP client (Claude Desktop,
+agents) and the companion web client both drive the same tools to inspect
+and safely change a SONiC fabric.
 
+- **Standard MCP transport** — point any MCP client at `/mcp` (Streamable
+  HTTP) or `python -m mcp_runtime.mcp_stdio` (Claude Desktop) for
+  plug-and-play tool discovery. See [Protocol compatibility](#protocol-compatibility).
 - **55 tools** across reads, mutations, and fabric-level diagnostics
-- **Three transports** — RESTCONF, SSH, and `vtysh` (FRR) — each handler
-  declares what it uses
+- **Three device transports** — RESTCONF, SSH, and `vtysh` (FRR) — each
+  handler declares what it uses
 - **Policy tiers** — `SAFE_READ` / `MUTATION` / `DESTRUCTIVE`, gated
   by a server-side kill switch, a per-tool confirmation flag, and an
   auto-mode allow-list
@@ -37,27 +42,34 @@ client — can use to inspect and safely change a SONiC fabric.
 ## Architecture
 
 ```
-┌──────────────────────┐   HTTP   ┌─────────────────────────────┐
-│ AI agent / web UI /  │  ──────> │ SONiC MCP server (FastAPI)  │
-│ curl / Prometheus    │  <────── │  /tools  /invoke            │
-└──────────────────────┘          │  /ready  /health  /metrics  │
-                                  │  /fabric/intent             │
-                                  └──────────────┬──────────────┘
-                                                 │ three transports
-                 ┌───────────────────────────────┼───────────────────────────────┐
-                 │                               │                               │
-                 ▼                               ▼                               ▼
-        RESTCONF /restconf/…           SSH (paramiko)                 vtysh show … json
-        (openconfig YANG)         show X / sonic-db-cli / config     (FRR native JSON)
-                 │                               │                               │
-                 └───────────────────────────────┼───────────────────────────────┘
-                                                 │
-                                                 ▼
-                                        ┌────────────────┐
-                                        │ SONiC switches │
-                                        │ (inventory/IPs)│
-                                        └────────────────┘
+  MCP clients                     Web client / curl / Prometheus
+  (Claude Desktop, agents)        (companion UI, HTTP callers)
+        │  standard MCP                    │  custom REST
+        │  stdio | Streamable HTTP         │
+        ▼                                  ▼
+┌───────────────────────────────────────────────────────────────┐
+│ SONiC MCP server (FastAPI)                                     │
+│   /mcp  (standard MCP)      /tools  /invoke  (REST)            │
+│   /ready  /health  /metrics  /fabric/intent  /inventory       │
+│   ── one shared 55-tool registry · policy · ledger · metrics ─│
+└──────────────────────────────┬────────────────────────────────┘
+                               │ three device transports
+         ┌─────────────────────┼─────────────────────┐
+         ▼                     ▼                     ▼
+   RESTCONF /restconf/…   SSH (paramiko)      vtysh show … json
+   (openconfig YANG)   show X / sonic-db-cli   (FRR native JSON)
+         │                     │                     │
+         └─────────────────────┼─────────────────────┘
+                               ▼
+                       ┌────────────────┐
+                       │ SONiC switches │
+                       │ (inventory/IPs)│
+                       └────────────────┘
 ```
+
+Both the MCP transport and the REST API drive **one shared registry**, so
+policy (kill switch, confirmation), the mutation ledger, metrics, and auth
+behave identically no matter how a tool is called.
 
 Every tool handler receives a `SonicTransport` object with `.restconf`,
 `.ssh`, and `.inventory`. Which one a tool uses is declared in the catalog
@@ -468,7 +480,11 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full walkthrough. In short:
 2. Append the catalog entry to `generated/mcp_tools.json`
 3. `pytest` — `tests/test_catalog.py` enforces handler↔catalog parity
 
-The registry auto-discovers the file at boot — no third edit required.
+The registry auto-discovers the file at boot — no third edit required. A new
+tool automatically shows up on **all** surfaces at once: `/tools`, `/invoke`,
+and standard MCP (`/mcp` + stdio). Its JSON Schema and policy come straight
+from the catalog entry, so MCP clients get correct inputs and risk hints for
+free.
 
 ---
 
