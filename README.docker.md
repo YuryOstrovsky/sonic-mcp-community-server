@@ -80,6 +80,12 @@ curl -s -X POST http://localhost:8000/invoke \
   -d '{"tool":"get_fabric_health","inputs":{}}' | jq .
 ```
 
+The container also serves **standard MCP** (Streamable HTTP) at
+`http://localhost:8000/mcp` — point any MCP client there (send
+`Authorization: Bearer <MCP_API_KEY>` when auth is enabled). For a local
+Claude Desktop subprocess, use `python -m mcp_runtime.mcp_stdio`. See the main
+[`README.md`](./README.md#protocol-compatibility).
+
 ## 4. What lives where
 
 | Host path           | Container path      | Purpose                                                    | Mode |
