@@ -137,6 +137,57 @@ mcp = MCPServer(auto_mode=False)
 session_store = SessionStore()
 
 # -------------------------------------------------
+# Standards-compliant MCP transport (Streamable HTTP) at /mcp
+# -------------------------------------------------
+# The same registry, exposed over the official MCP protocol so any MCP client
+# (Claude, agents) can connect at http(s)://<host>/mcp — in addition to the
+# custom /tools + /invoke REST API the web client uses. stdio is a separate
+# entrypoint (python -m mcp_runtime.mcp_stdio) for Claude Desktop.
+from contextlib import asynccontextmanager
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+from mcp_runtime.mcp_protocol import build_mcp_server
+
+_mcp_protocol = build_mcp_server(mcp)
+# stateless: no server-side session store needed (each request self-contained);
+# json_response=False keeps the streaming (SSE) responses standard MCP clients expect.
+_mcp_manager = StreamableHTTPSessionManager(
+    app=_mcp_protocol, json_response=False, stateless=True
+)
+
+
+@asynccontextmanager
+async def _mcp_lifespan(_app: FastAPI):
+    async with _mcp_manager.run():
+        logger.info("MCP Streamable HTTP transport ready at /mcp")
+        yield
+
+
+# Attach the lifespan that runs the MCP session manager's task group.
+app.router.lifespan_context = _mcp_lifespan
+
+
+async def _mcp_asgi(scope, receive, send):
+    """ASGI handler for /mcp. Applies the same MCP_API_KEY Bearer gate as the
+    REST API when set (stdio stays unauthenticated — it's a local subprocess)."""
+    if scope["type"] == "http":
+        key = os.environ.get("MCP_API_KEY", "").strip()
+        if key:
+            hdrs = dict(scope.get("headers") or [])
+            supplied = hdrs.get(b"authorization", b"").decode()
+            if not hmac.compare_digest(supplied, f"Bearer {key}"):
+                resp = Response(
+                    "Missing or invalid API key",
+                    status_code=401,
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+                await resp(scope, receive, send)
+                return
+    await _mcp_manager.handle_request(scope, receive, send)
+
+
+app.mount("/mcp", _mcp_asgi)
+
+# -------------------------------------------------
 # Fix #13: In-memory rate limiter (sliding window per IP)
 # -------------------------------------------------
 _RATE_LIMIT_RPM = int(os.environ.get("MCP_RATE_LIMIT_RPM", "60"))  # requests/minute/IP

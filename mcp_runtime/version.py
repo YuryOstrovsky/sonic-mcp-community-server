@@ -11,4 +11,4 @@ operational behaviour will keep evolving, so the public API is not yet
 frozen at 1.0.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

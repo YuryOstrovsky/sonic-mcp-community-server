@@ -136,6 +136,7 @@ intent, and snapshot lives on the host.
 
 | Path | Purpose |
 |---|---|
+| `ANY /mcp` | **Standard MCP** (Streamable HTTP) — point any MCP client here. Also `python -m mcp_runtime.mcp_stdio` for Claude Desktop. |
 | `GET /tools` | Full tool catalog (JSON array, 55 entries) |
 | `POST /invoke` | Run a tool. Body: `{tool, inputs, confirm?}` |
 | `GET /ready` | Probes every device on RESTCONF + SSH; 503 if nothing reachable |

@@ -6,6 +6,30 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] — Standards-compliant MCP transport
+
+### Added
+
+- **Standard Model Context Protocol support** — the same 55-tool registry is
+  now exposed over the official MCP protocol, so any MCP client (Claude
+  Desktop, claude.ai connectors, agent SDKs) gets plug-and-play tool
+  discovery:
+  - **Streamable HTTP** mounted at `/mcp` on the existing server (gated by the
+    same `MCP_API_KEY` Bearer auth).
+  - **stdio** entrypoint `python -m mcp_runtime.mcp_stdio` for local clients
+    like Claude Desktop.
+  - Tools carry JSON-Schema inputs, risk annotations (`readOnlyHint` /
+    `destructiveHint`), and a `confirm` flag on mutating tools. Policy parity:
+    the `MCP_MUTATIONS_ENABLED` kill switch, mutation ledger, and metrics all
+    apply to MCP calls.
+- New `mcp_runtime/mcp_protocol.py` (adapter) and `mcp_runtime/mcp_stdio.py`
+  (entrypoint); in-memory protocol tests.
+
+### Unchanged
+
+- The custom `/tools` + `/invoke` REST API is untouched — the companion web
+  client and plain HTTP callers work exactly as before.
+
 ## [0.1.0] — First community release candidate
 
 First public community release of the SONiC MCP Community Server: 55 tools
