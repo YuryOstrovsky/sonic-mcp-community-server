@@ -65,18 +65,43 @@ so the UI can render it (you'll see `transport: ssh` next to a result).
 
 ### Protocol compatibility
 
-> **Heads-up on the name.** The `/tools` and `/invoke` endpoints are a
-> **custom, MCP-inspired REST API** — the interface the companion web
-> client and any HTTP caller use. The server does **not yet expose a
-> standards-compliant MCP transport** (stdio, SSE, or Streamable HTTP), so
-> you **cannot** point Claude Desktop, Codex, or another off-the-shelf MCP
-> client at it and expect plug-and-play tool discovery today.
+The server speaks the **standards-compliant Model Context Protocol** *and*
+the custom REST API — the same 55-tool registry, exposed two ways:
 
-An AI agent integrates by calling the REST API directly: `GET /tools` for
-the catalog (name, input schema, policy, transport) and `POST /invoke` to
-run one. The `mcp` package is a dependency for tool/type modelling; a
-standards-compliant transport is on the roadmap. If/when it lands, this
-section will name the exact transport and how to connect.
+| Surface | Endpoint / entrypoint | Who uses it |
+|---|---|---|
+| **MCP — Streamable HTTP** | `http(s)://<host>:8000/mcp` | Any remote MCP client / agent (claude.ai connectors, SDKs) |
+| **MCP — stdio** | `python -m mcp_runtime.mcp_stdio` | Local MCP clients that launch a subprocess (Claude Desktop) |
+| **Custom REST** | `GET /tools`, `POST /invoke` | The companion web client and plain HTTP callers |
+
+Point an off-the-shelf MCP client (Claude Desktop, Codex, an agent SDK) at
+the server and it gets **plug-and-play tool discovery** — all 55 tools with
+their JSON-Schema inputs, risk annotations (`readOnlyHint` /
+`destructiveHint`), and a `confirm` flag on mutating tools. Policy is
+identical across surfaces: the `MCP_MUTATIONS_ENABLED` kill switch, the
+mutation ledger, metrics, and `MCP_API_KEY` auth all apply to MCP calls too.
+
+**Connect a remote MCP client (Streamable HTTP):**
+point it at `http://<host>:8000/mcp`. When `MCP_API_KEY` is set, send
+`Authorization: Bearer <key>`.
+
+**Connect Claude Desktop (stdio)** — `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "sonic": {
+      "command": "python",
+      "args": ["-m", "mcp_runtime.mcp_stdio"],
+      "cwd": "/absolute/path/to/sonic-mcp-community-server",
+      "env": { "SONIC_DEFAULT_USERNAME": "admin", "SONIC_DEFAULT_PASSWORD": "YourPaSsWoRd" }
+    }
+  }
+}
+```
+
+The `/tools` + `/invoke` REST API remains for the web client and simple
+HTTP callers — nothing about it changed.
 
 ---
 
@@ -249,6 +274,7 @@ When `MCP_API_KEY` is set, endpoints marked 🔒 require an
 
 | Endpoint | Auth | Purpose |
 |---|---|---|
+| `ANY /mcp` | 🔒 | **Standard MCP** (Streamable HTTP). Point any MCP client here — see [Protocol compatibility](#protocol-compatibility). |
 | `GET /tools` | — | The full tool catalog — JSON array, 55 entries |
 | `POST /invoke` | 🔒 | Run a tool. Body: `{tool, inputs, confirm?}`. The `get_mutation_history` tool exposes the mutation-ledger search here. |
 | `GET /ready` | — | Probes every inventory device on RESTCONF + SSH. 503 if nothing reachable. |
